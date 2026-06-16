@@ -208,7 +208,7 @@ app.use("/api/v1", appRoutes());
 // import "./src/queue/worker.js";
 // --------------------------------------------------------
 // Start server
-const PORT = process.env.PORT || 8001;
+const PORT = process.env.PORT || 9001;
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
 });

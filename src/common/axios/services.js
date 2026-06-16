@@ -4,8 +4,8 @@ dotenv.config();
 
 // Where the other services live.
 const serviceUrls = {
-  core: process.env.CORE_URL || 'http://localhost:8001',
-  ai: process.env.AI_URL || 'http://localhost:8002',
+  core: process.env.CORE_URL || 'http://localhost:9001',
+  ai: process.env.AI_URL || 'http://localhost:9002',
 };
 
 // The axios call function: call another service and return its response.

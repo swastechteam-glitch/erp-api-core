@@ -42,6 +42,18 @@ import { authenticate } from "../middleware/authMiddleware.js";
 import notificationRouter from "./notificationRoutes.js";
 import employeeAllotment from "./employeeAllotmentRoutes.js";
 import pdfReport from "./pdfReportRoutes.js";
+import bankRouter from "./bankRoutes.js";
+import maintenanceGroupRouter from "./maintenanceGroupRoutes.js";
+import departmentGroupRouter from "./departmentGroupRoutes.js";
+import departmentRouter from "./departmentRoutes.js";
+import companyRouter from "./companyRoutes.js";
+import approvalRouter from "./approvalRoutes.js";
+import costHeadRouter from "./costHeadRoutes.js";
+import stateRouter from "./stateRoutes.js";
+import godownRouter from "./godownRoutes.js";
+import districtRouter from "./districtRoutes.js";
+import costingMasterRouter from "./costingMasterRoutes.js";
+import itemCategoryRouter from "./itemCategoryRoutes.js";
 
 const router = express.Router();
 
@@ -61,6 +73,17 @@ const appRoutes = () => {
   router.use("/gate/overview", gateOverviewRouter);
   router.use("/finance", financeRouter);
   router.use("/finance/overview", financeOverviewRouter);
+  router.use("/bank", bankRouter);
+  router.use("/maintenance-group", maintenanceGroupRouter);
+  router.use("/department-group", departmentGroupRouter);
+  router.use("/department", departmentRouter);
+  router.use("/approval", approvalRouter);
+  router.use("/cost-head", costHeadRouter);
+  router.use("/state", stateRouter);
+  router.use("/godown", godownRouter);
+  router.use("/district", districtRouter);
+  router.use("/costing-master", costingMasterRouter);
+  router.use("/item-category", itemCategoryRouter);
   router.use("/mechanical", mechanicalRouter);
 
   //REPORTS
@@ -85,6 +108,7 @@ const appRoutes = () => {
 
   //   Test DB
   router.get("/company", testDBConnection);
+  router.use("/company", companyRouter);
 
   router.use("/location", locationRoutes);
 

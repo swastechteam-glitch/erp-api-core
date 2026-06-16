@@ -64,11 +64,11 @@ export const clientDBConfig = {
     // port: 1433,
     // database: "SwasERP_SASI",
 
-    // user: "sa",
-    // password: "@dmin1305",
-    // server: "SWAS-ANBUKATHIR\\SKYRP2008",
-    // port: 1433,
-    // database: "SwasERP_KAS",
+    user: "sa",
+    password: "@dmin1305",
+    server: "SWAS-ANBUKATHIR\\SKYRP2008",
+    port: 1433,
+    database: "SwasERP_KAS",
 
     // user: "sa",
     // password: "@dmin1305",
@@ -138,11 +138,11 @@ export const clientDBConfig = {
     // port: 16000,
     // database: "SwasERP_KPF",
 
-    user: "sa",
-    password: "@dmin1305",
-    server: "117.200.77.84",
-    port: 16000,
-    database: "SwasERP_KAS",
+    // user: "sa",
+    // password: "@dmin1305",
+    // server: "117.200.77.84",
+    // port: 16000,
+    // database: "SwasERP_KAS",
 
     // user: "sa",
     // password: "@dmin1305",
