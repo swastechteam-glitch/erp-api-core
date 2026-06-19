@@ -66,6 +66,7 @@ import machineServiceScheduleRouter from "./machineServiceScheduleRoutes.js";
 import serviceActivityRouter from "./serviceActivityRoutes.js";
 import typeOfBreakdownRouter from "./typeOfBreakdownRoutes.js";
 import roleMenuRouter from "./roleMenuRoutes.js";
+import einvoiceRouter from "./einvoiceRoutes.js";
 
 const router = express.Router();
 
@@ -109,6 +110,7 @@ const appRoutes = () => {
   router.use("/type-of-breakdown", typeOfBreakdownRouter);
   router.use("/mechanical", mechanicalRouter);
   router.use("/role-access", roleMenuRouter);
+  router.use("/einvoice", einvoiceRouter);
 
   //REPORTS
   router.use("/cotton/reports", cottonReportRoutes);
