@@ -54,6 +54,18 @@ import godownRouter from "./godownRoutes.js";
 import districtRouter from "./districtRoutes.js";
 import costingMasterRouter from "./costingMasterRoutes.js";
 import itemCategoryRouter from "./itemCategoryRoutes.js";
+import taxRouter from "./taxRoutes.js";
+import itemUomRouter from "./itemUomRoutes.js";
+import itemGroupRouter from "./itemGroupRoutes.js";
+import itemRouter from "./itemRoutes.js";
+import machineRouter from "./machineRoutes.js";
+import machineMakeRouter from "./machineMakeRoutes.js";
+import machineTypeRouter from "./machineTypeRoutes.js";
+import commonServiceActivityRouter from "./commonServiceActivityRoutes.js";
+import machineServiceScheduleRouter from "./machineServiceScheduleRoutes.js";
+import serviceActivityRouter from "./serviceActivityRoutes.js";
+import typeOfBreakdownRouter from "./typeOfBreakdownRoutes.js";
+import roleMenuRouter from "./roleMenuRoutes.js";
 
 const router = express.Router();
 
@@ -84,7 +96,19 @@ const appRoutes = () => {
   router.use("/district", districtRouter);
   router.use("/costing-master", costingMasterRouter);
   router.use("/item-category", itemCategoryRouter);
+  router.use("/tax", taxRouter);
+  router.use("/item-uom", itemUomRouter);
+  router.use("/item-group", itemGroupRouter);
+  router.use("/item", itemRouter);
+  router.use("/machine", machineRouter);
+  router.use("/machine-make", machineMakeRouter);
+  router.use("/machine-type", machineTypeRouter);
+  router.use("/common-service-activity", commonServiceActivityRouter);
+  router.use("/machine-service-schedule", machineServiceScheduleRouter);
+  router.use("/service-activity", serviceActivityRouter);
+  router.use("/type-of-breakdown", typeOfBreakdownRouter);
   router.use("/mechanical", mechanicalRouter);
+  router.use("/role-access", roleMenuRouter);
 
   //REPORTS
   router.use("/cotton/reports", cottonReportRoutes);
