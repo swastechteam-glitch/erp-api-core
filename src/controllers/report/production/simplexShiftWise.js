@@ -11,7 +11,7 @@ import {
 } from '../cotton/_common.js';
 
 // 17 columns.
-const WIDTHS = [28, 52, 40, 40, 40, 38, 44, 44, 36, 36, 36, 40, 40, 38, 36, 44, 40];
+const WIDTHS = [26, '*', 38, 38, 38, 36, 40, 40, 34, 34, 34, 36, 36, 34, 34, 40, 36];
 
 const TITLE = 'SIMPLEX PRODUCTION - SHIFT WISE DETAILS';
 const FILE_NAME = 'SimplexProduction_ShiftWise';

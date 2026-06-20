@@ -40,7 +40,7 @@ function buildDocDefinition({ rows, companyName, companyLogo, fromDate, toDate }
     'Diff-1 (Spg-A/c)', 'Diff-2 (Spg-Pkg)', 'Diff-3 (Pkg-Bag)',
     'A/C Cones', 'Pkg P.Cones', 'Diff Cones'
   ];
-  const widths = [60, 62, 62, 62, 62, 70, 70, 70, 55, 60, 55];
+  const widths = ['*', 62, 62, 62, 62, 70, 70, 70, 55, 60, 55];
   const body = [headRow(headers)];
 
   // Group by ProdnDate (sum every numeric field) — one row per date.

@@ -124,7 +124,7 @@ function buildSummaryPage({ COLS, rows, config, companyName, dateLine, companyLo
   const totalCols = COLS.filter(c => c.total);
   const summaryCols = [
     { header: 'S.No', width: 32, align: 'center' },
-    { header: 'Invoice Date', width: 70, align: 'center' },
+    { header: 'Invoice Date', width: '*', align: 'center' },
     ...totalCols.map(c => ({ header: c.header, width: c.width, kind: c.kind }))
   ];
   const body = [headerCells(summaryCols, fs)];

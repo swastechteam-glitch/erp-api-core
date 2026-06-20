@@ -157,7 +157,7 @@ function buildGroupWise(rows, companyName, fromDate, toDate) {
   }
 
   const body = [];
-  const widths = [70, 110, 76, 76, 76, 76, 76, 64, 64, 76];
+  const widths = [70, '*', 76, 76, 76, 76, 76, 64, 64, 76];
 
   const headers = ['Group Name', 'Category Name', 'Opening Value', 'Purchase Value', 'Pur. Rtn. Value',
                    'Issue Value', 'Iss. Rtn. Value', 'Add Value', 'Less Value', 'Closing Value'];
@@ -316,7 +316,7 @@ function buildDepartmentWiseValue(rows, companyName, fromDate, toDate) {
   });
 
   const body = [];
-  const widths = [180, 100, 100, 100, 100, 100];
+  const widths = ['*', 100, 100, 100, 100, 100];
 
   const headers = ['Department', 'Opening Balance (INR)', 'Purchase (INR)', 'Total (INR)', 'Issue (INR)', 'Closing Balance (INR)'];
   body.push(headers.map(t => ({

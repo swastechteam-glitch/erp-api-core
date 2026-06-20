@@ -10,8 +10,9 @@ import {
   dec, str, fmt, ddmmyyyy, chartFromRows
 } from '../cotton/_common.js';
 
-// 14 columns.
-const WIDTHS = [28, 54, 40, 48, 48, 40, 40, 44, 46, 44, 44, 40, 48, 44];
+// 14 columns. Numeric columns widened so the flex Emp ID column fills the
+// remaining page width at a balanced size (rather than ballooning).
+const WIDTHS = [28, '*', 48, 56, 56, 48, 48, 52, 54, 52, 52, 48, 56, 52];
 
 const TITLE = 'FINISHER DRAWING PRODUCTION - SHIFT WISE DETAILS';
 const FILE_NAME = 'FinisherDrawingProduction_ShiftWise';

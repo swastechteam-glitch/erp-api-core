@@ -18,19 +18,19 @@ const byEmpId = (a, b) =>
 
 function buildDocDefinition({ rows, companyName, companyLogo }) {
   const cols = [
-    { header: 'Emp. ID', width: 32, align: 'center', value: (r) => str(r, 'EmployeeID') },
+    { header: 'Emp. ID', width: 30, align: 'center', value: (r) => str(r, 'EmployeeID') },
     { header: 'Name', width: '*', value: (r) => str(r, 'EmployeeName') },
-    { header: 'Shift', width: 48, align: 'center', value: (r) => str(r, 'ShiftName') },
-    { header: 'Agent', width: 70, value: (r) => str(r, 'AgentName') },
-    { header: 'Bank Name', width: 72, value: (r) => str(r, 'BankName') },
-    { header: 'A/C No.', width: 74, align: 'center', value: (r) => str(r, 'ACNo') },
-    { header: 'IFSC Code', width: 60, align: 'center', value: (r) => str(r, 'IFSCCode') },
-    { header: 'Aadhar No.', width: 72, align: 'center', value: (r) => str(r, 'AadharNo') },
-    { header: 'PF No.', width: 62, align: 'center', value: (r) => str(r, 'PFNo') },
-    { header: 'UAN No.', width: 54, align: 'center', value: () => '' },
-    { header: 'ESI No.', width: 62, align: 'center', value: (r) => str(r, 'ESINo') },
-    { header: 'PAN No.', width: 62, align: 'center', value: (r) => str(r, 'PANNo') },
-    { header: 'Mobile No.', width: 64, align: 'center', value: (r) => str(r, 'PhoneNo') }
+    { header: 'Shift', width: 40, align: 'center', value: (r) => str(r, 'ShiftName') },
+    { header: 'Agent', width: 56, value: (r) => str(r, 'AgentName') },
+    { header: 'Bank Name', width: 58, value: (r) => str(r, 'BankName') },
+    { header: 'A/C No.', width: 60, align: 'center', value: (r) => str(r, 'ACNo') },
+    { header: 'IFSC Code', width: 54, align: 'center', value: (r) => str(r, 'IFSCCode') },
+    { header: 'Aadhar No.', width: 60, align: 'center', value: (r) => str(r, 'AadharNo') },
+    { header: 'PF No.', width: 52, align: 'center', value: (r) => str(r, 'PFNo') },
+    { header: 'UAN No.', width: 46, align: 'center', value: () => '' },
+    { header: 'ESI No.', width: 52, align: 'center', value: (r) => str(r, 'ESINo') },
+    { header: 'PAN No.', width: 52, align: 'center', value: (r) => str(r, 'PANNo') },
+    { header: 'Mobile No.', width: 58, align: 'center', value: (r) => str(r, 'PhoneNo') }
   ];
 
   const table = flatTable(cols, [...rows].sort(byEmpId));

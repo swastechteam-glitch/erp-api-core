@@ -10,8 +10,8 @@ import {
   dec, str, fmt, ddmmyyyy, chartFromRows
 } from '../cotton/_common.js';
 
-// 11 columns.
-const WIDTHS = [40, 56, 52, 56, 48, 52, 44, 44, 44, 44, 52];
+// 11 columns. Count (text) flexes to fill the page; M/C No stays fixed.
+const WIDTHS = [44, '*', 52, 56, 48, 52, 44, 44, 44, 44, 52];
 
 const TITLE = 'SPINNING SHIFT WISE PRODUCTION REPORT';
 const FILE_NAME = 'SpinningProduction_ShiftWise';

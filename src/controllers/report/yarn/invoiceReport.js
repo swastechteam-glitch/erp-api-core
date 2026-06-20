@@ -63,8 +63,8 @@ const baseLayout = {
   vLineWidth: () => 0.4,
   hLineColor: (i, node) => (i === 0 || i === 1 || i === node.table.body.length ? COLORS.headerFill : COLORS.borderColor),
   vLineColor: () => COLORS.borderColor,
-  paddingLeft: () => 3,
-  paddingRight: () => 3,
+  paddingLeft: () => 2,
+  paddingRight: () => 2,
   paddingTop: () => 5,
   paddingBottom: () => 5
 };
@@ -255,7 +255,7 @@ function makeBuilder(config) {
     return {
       pageSize: 'A4',
       pageOrientation: 'landscape',
-      pageMargins: [12, 18, 12, 40],
+      pageMargins: [8, 18, 8, 40],
       footer: baseFooter,
       content: [
         ...summaryNodes,
@@ -321,24 +321,24 @@ const dateWiseConfig = {
   groupKey: (r) => isoDate(r.BillDate) + '||' + ddmmyyyy(r.BillDate),
   groupLabel: (first) => 'Date : ' + ddmmyyyy(first.BillDate),
   columns: [
-    { header: 'S.No', width: 22, cell: sn() },
-    { header: 'SO No', width: 42, cell: txt(r => str(r, 'SONo'), 'center') },
-    { header: 'SO Date', width: 50, cell: txt(r => ddmmyyyy(r.SODate), 'center') },
+    { header: 'S.No', width: 20, cell: sn() },
+    { header: 'SO No', width: 40, cell: txt(r => str(r, 'SONo'), 'center') },
+    { header: 'SO Date', width: 44, cell: txt(r => ddmmyyyy(r.SODate), 'center') },
     { header: 'Inv. No', width: 42, cell: txt(r => str(r, 'strInvoiceNo'), 'center') },
     { header: 'Customer', width: '*', cell: txt(r => str(r, 'CustomerName')) },
-    { header: 'Sales Type', width: 55, cell: txt(r => str(r, 'SalesType')) },
+    { header: 'Sales Type', width: 48, cell: txt(r => str(r, 'SalesType')) },
     { header: 'Count', width: 42, cell: txt(r => str(r, 'Count'), 'center') },
-    { header: 'Bags', width: 30, cell: intNum(r => dec(r, 'Qty')), ...totalColsBase.qty },
-    { header: 'Weight', width: 48, cell: num(r => dec(r, 'Weight'), 3), ...totalColsBase.weight },
-    { header: 'Rate', width: 40, cell: num(r => dec(r, 'RateEx'), 2) },
-    { header: 'Basic', width: 55, cell: num(r => dec(r, 'BasicAmount')), ...totalColsBase.basic },
-    { header: 'Tax', width: 50, cell: num(r => taxOf(r)), ...totalColsBase.tax },
-    { header: 'Fright', width: 40, cell: num(r => dec(r, 'Item_FreightAmount')), ...totalColsBase.freight },
-    { header: 'TCS Tax Amt', width: 50, cell: num(r => dec(r, 'TCSTaxableAmount')), ...totalColsBase.tcsTaxable },
-    { header: 'TCS %', width: 30, cell: num(r => dec(r, 'TCSPer'), 2) },
-    { header: 'TCS Amt', width: 40, cell: num(r => dec(r, 'Item_TSCAmount')), ...totalColsBase.tcsAmt },
-    { header: 'RND', width: 28, cell: num(r => dec(r, 'RoundOff')), ...totalColsBase.roundOff },
-    { header: 'Net Amount', width: 60, cell: num(r => dec(r, 'Item_NetAmount')), ...totalColsBase.netAmount }
+    { header: 'Bags', width: 28, cell: intNum(r => dec(r, 'Qty')), ...totalColsBase.qty },
+    { header: 'Weight', width: 44, cell: num(r => dec(r, 'Weight'), 3), ...totalColsBase.weight },
+    { header: 'Rate', width: 38, cell: num(r => dec(r, 'RateEx'), 2) },
+    { header: 'Basic', width: 48, cell: num(r => dec(r, 'BasicAmount')), ...totalColsBase.basic },
+    { header: 'Tax', width: 44, cell: num(r => taxOf(r)), ...totalColsBase.tax },
+    { header: 'Fright', width: 34, cell: num(r => dec(r, 'Item_FreightAmount')), ...totalColsBase.freight },
+    { header: 'TCS Tax Amt', width: 40, cell: num(r => dec(r, 'TCSTaxableAmount')), ...totalColsBase.tcsTaxable },
+    { header: 'TCS %', width: 26, cell: num(r => dec(r, 'TCSPer'), 2) },
+    { header: 'TCS Amt', width: 36, cell: num(r => dec(r, 'Item_TSCAmount')), ...totalColsBase.tcsAmt },
+    { header: 'RND', width: 24, cell: num(r => dec(r, 'RoundOff')), ...totalColsBase.roundOff },
+    { header: 'Net Amount', width: 50, cell: num(r => dec(r, 'Item_NetAmount')), ...totalColsBase.netAmount }
   ]
 };
 
@@ -351,25 +351,29 @@ const customerWiseConfig = {
   subLabelSpan: 6,
   groupKey: (r) => (str(r, 'CustomerName') || '(Unknown Customer)') + '||' + (r.CustomerCode != null ? String(r.CustomerCode) : ''),
   groupLabel: (first) => 'Customer : ' + (str(first, 'CustomerName') || '(Unknown Customer)'),
+  // NOTE: this variant has no flexible '*' column (Inv. Date replaces the
+  // Customer column), so all widths are fixed. They must sum small enough that
+  // sum + padding (6pt/col) + borders stays within the A4-landscape usable
+  // width (~818pt), otherwise the trailing columns (Net Amount) get clipped.
   columns: [
-    { header: 'S.No', width: 22, cell: sn() },
-    { header: 'SO No', width: 42, cell: txt(r => str(r, 'SONo'), 'center') },
-    { header: 'SO Date', width: 50, cell: txt(r => ddmmyyyy(r.SODate), 'center') },
+    { header: 'S.No', width: 20, cell: sn() },
+    { header: 'SO No', width: 40, cell: txt(r => str(r, 'SONo'), 'center') },
+    { header: 'SO Date', width: 44, cell: txt(r => ddmmyyyy(r.SODate), 'center') },
     { header: 'Inv. No', width: 42, cell: txt(r => str(r, 'strInvoiceNo'), 'center') },
-    { header: 'Inv. Date', width: 50, cell: txt(r => ddmmyyyy(r.BillDate), 'center') },
-    { header: 'Sales Type', width: 55, cell: txt(r => str(r, 'SalesType')) },
-    { header: 'Count', width: 45, cell: txt(r => str(r, 'Count'), 'center') },
-    { header: 'Bags', width: 30, cell: intNum(r => dec(r, 'Qty')), ...totalColsBase.qty },
-    { header: 'Weight', width: 48, cell: num(r => dec(r, 'Weight'), 3), ...totalColsBase.weight },
-    { header: 'Rate', width: 42, cell: num(r => dec(r, 'RateEx'), 2) },
-    { header: 'Basic', width: 55, cell: num(r => dec(r, 'BasicAmount')), ...totalColsBase.basic },
-    { header: 'Tax', width: 50, cell: num(r => taxOf(r)), ...totalColsBase.tax },
-    { header: 'Fright', width: 40, cell: num(r => dec(r, 'Item_FreightAmount')), ...totalColsBase.freight },
-    { header: 'TCS Tax Amt', width: 50, cell: num(r => dec(r, 'TCSTaxableAmount')), ...totalColsBase.tcsTaxable },
-    { header: 'TCS %', width: 30, cell: num(r => dec(r, 'TCSPer'), 2) },
-    { header: 'TCS Amt', width: 40, cell: num(r => dec(r, 'Item_TSCAmount')), ...totalColsBase.tcsAmt },
-    { header: 'RND', width: 28, cell: num(r => dec(r, 'RoundOff')), ...totalColsBase.roundOff },
-    { header: 'Net Amount', width: 60, cell: num(r => dec(r, 'Item_NetAmount')), ...totalColsBase.netAmount }
+    { header: 'Inv. Date', width: 44, cell: txt(r => ddmmyyyy(r.BillDate), 'center') },
+    { header: 'Sales Type', width: '*', cell: txt(r => str(r, 'SalesType')) },
+    { header: 'Count', width: '*', cell: txt(r => str(r, 'Count'), 'center') },
+    { header: 'Bags', width: 28, cell: intNum(r => dec(r, 'Qty')), ...totalColsBase.qty },
+    { header: 'Weight', width: 44, cell: num(r => dec(r, 'Weight'), 3), ...totalColsBase.weight },
+    { header: 'Rate', width: 38, cell: num(r => dec(r, 'RateEx'), 2) },
+    { header: 'Basic', width: 48, cell: num(r => dec(r, 'BasicAmount')), ...totalColsBase.basic },
+    { header: 'Tax', width: 44, cell: num(r => taxOf(r)), ...totalColsBase.tax },
+    { header: 'Fright', width: 34, cell: num(r => dec(r, 'Item_FreightAmount')), ...totalColsBase.freight },
+    { header: 'TCS Tax Amt', width: 40, cell: num(r => dec(r, 'TCSTaxableAmount')), ...totalColsBase.tcsTaxable },
+    { header: 'TCS %', width: 26, cell: num(r => dec(r, 'TCSPer'), 2) },
+    { header: 'TCS Amt', width: 36, cell: num(r => dec(r, 'Item_TSCAmount')), ...totalColsBase.tcsAmt },
+    { header: 'RND', width: 24, cell: num(r => dec(r, 'RoundOff')), ...totalColsBase.roundOff },
+    { header: 'Net Amount', width: 50, cell: num(r => dec(r, 'Item_NetAmount')), ...totalColsBase.netAmount }
   ]
 };
 
@@ -383,24 +387,24 @@ const agentWiseConfig = {
   groupKey: (r) => (str(r, 'AgentName') || '(No Agent)') + '||' + (r.AgentCode != null ? String(r.AgentCode) : ''),
   groupLabel: (first) => 'Agent : ' + (str(first, 'AgentName') || '(No Agent)'),
   columns: [
-    { header: 'S.No', width: 22, cell: sn() },
-    { header: 'SO No', width: 42, cell: txt(r => str(r, 'SONo'), 'center') },
-    { header: 'SO Date', width: 50, cell: txt(r => ddmmyyyy(r.SODate), 'center') },
+    { header: 'S.No', width: 20, cell: sn() },
+    { header: 'SO No', width: 40, cell: txt(r => str(r, 'SONo'), 'center') },
+    { header: 'SO Date', width: 44, cell: txt(r => ddmmyyyy(r.SODate), 'center') },
     { header: 'Inv. No', width: 42, cell: txt(r => str(r, 'strInvoiceNo'), 'center') },
-    { header: 'Inv. Date', width: 50, cell: txt(r => ddmmyyyy(r.BillDate), 'center') },
+    { header: 'Inv. Date', width: 44, cell: txt(r => ddmmyyyy(r.BillDate), 'center') },
     { header: 'Customer', width: '*', cell: txt(r => str(r, 'CustomerName')) },
-    { header: 'Sales Type', width: 55, cell: txt(r => str(r, 'SalesType')) },
+    { header: 'Sales Type', width: 48, cell: txt(r => str(r, 'SalesType')) },
     { header: 'Count', width: 42, cell: txt(r => str(r, 'Count'), 'center') },
-    { header: 'Bags', width: 30, cell: intNum(r => dec(r, 'Qty')), ...totalColsBase.qty },
-    { header: 'Weight', width: 48, cell: num(r => dec(r, 'Weight'), 3), ...totalColsBase.weight },
-    { header: 'Rate', width: 40, cell: num(r => dec(r, 'RateEx'), 2) },
-    { header: 'Basic', width: 55, cell: num(r => dec(r, 'BasicAmount')), ...totalColsBase.basic },
-    { header: 'Tax', width: 50, cell: num(r => taxOf(r)), ...totalColsBase.tax },
-    { header: 'Fright', width: 40, cell: num(r => dec(r, 'Item_FreightAmount')), ...totalColsBase.freight },
-    { header: 'TCS Tax Amt', width: 50, cell: num(r => dec(r, 'TCSTaxableAmount')), ...totalColsBase.tcsTaxable },
-    { header: 'TCS %', width: 28, cell: num(r => dec(r, 'TCSPer'), 2) },
-    { header: 'TCS Amt', width: 40, cell: num(r => dec(r, 'Item_TSCAmount')), ...totalColsBase.tcsAmt },
-    { header: 'Net Amount', width: 60, cell: num(r => dec(r, 'Item_NetAmount')), ...totalColsBase.netAmount }
+    { header: 'Bags', width: 28, cell: intNum(r => dec(r, 'Qty')), ...totalColsBase.qty },
+    { header: 'Weight', width: 44, cell: num(r => dec(r, 'Weight'), 3), ...totalColsBase.weight },
+    { header: 'Rate', width: 38, cell: num(r => dec(r, 'RateEx'), 2) },
+    { header: 'Basic', width: 48, cell: num(r => dec(r, 'BasicAmount')), ...totalColsBase.basic },
+    { header: 'Tax', width: 44, cell: num(r => taxOf(r)), ...totalColsBase.tax },
+    { header: 'Fright', width: 34, cell: num(r => dec(r, 'Item_FreightAmount')), ...totalColsBase.freight },
+    { header: 'TCS Tax Amt', width: 40, cell: num(r => dec(r, 'TCSTaxableAmount')), ...totalColsBase.tcsTaxable },
+    { header: 'TCS %', width: 26, cell: num(r => dec(r, 'TCSPer'), 2) },
+    { header: 'TCS Amt', width: 36, cell: num(r => dec(r, 'Item_TSCAmount')), ...totalColsBase.tcsAmt },
+    { header: 'Net Amount', width: 50, cell: num(r => dec(r, 'Item_NetAmount')), ...totalColsBase.netAmount }
   ]
 };
 
@@ -414,24 +418,24 @@ const countWiseConfig = {
   groupKey: (r) => (str(r, 'CountType') || '(Unknown Count)') + '||' + (r.CountTypeCode != null ? String(r.CountTypeCode) : ''),
   groupLabel: (first) => 'Count Type : ' + (str(first, 'CountType') || '(Unknown Count)'),
   columns: [
-    { header: 'S.No', width: 22, cell: sn() },
-    { header: 'SO No', width: 42, cell: txt(r => str(r, 'SONo'), 'center') },
-    { header: 'SO Date', width: 50, cell: txt(r => ddmmyyyy(r.SODate), 'center') },
+    { header: 'S.No', width: 20, cell: sn() },
+    { header: 'SO No', width: 40, cell: txt(r => str(r, 'SONo'), 'center') },
+    { header: 'SO Date', width: 44, cell: txt(r => ddmmyyyy(r.SODate), 'center') },
     { header: 'Inv. No', width: 42, cell: txt(r => str(r, 'strInvoiceNo'), 'center') },
-    { header: 'Inv. Date', width: 50, cell: txt(r => ddmmyyyy(r.BillDate), 'center') },
+    { header: 'Inv. Date', width: 44, cell: txt(r => ddmmyyyy(r.BillDate), 'center') },
     { header: 'Customer', width: '*', cell: txt(r => str(r, 'CustomerName')) },
-    { header: 'Sales Type', width: 55, cell: txt(r => str(r, 'SalesType')) },
-    { header: 'Bags', width: 30, cell: intNum(r => dec(r, 'Qty')), ...totalColsBase.qty },
-    { header: 'Weight', width: 48, cell: num(r => dec(r, 'Weight'), 3), ...totalColsBase.weight },
-    { header: 'Rate', width: 40, cell: num(r => dec(r, 'RateEx'), 2) },
-    { header: 'Basic', width: 55, cell: num(r => dec(r, 'BasicAmount')), ...totalColsBase.basic },
-    { header: 'Tax', width: 50, cell: num(r => taxOf(r)), ...totalColsBase.tax },
-    { header: 'Fright', width: 40, cell: num(r => dec(r, 'Item_FreightAmount')), ...totalColsBase.freight },
-    { header: 'TCS Tax Amt', width: 50, cell: num(r => dec(r, 'TCSTaxableAmount')), ...totalColsBase.tcsTaxable },
-    { header: 'TCS %', width: 28, cell: num(r => dec(r, 'TCSPer'), 2) },
-    { header: 'TCS Amt', width: 40, cell: num(r => dec(r, 'Item_TSCAmount')), ...totalColsBase.tcsAmt },
-    { header: 'RND', width: 28, cell: num(r => dec(r, 'RoundOff')), ...totalColsBase.roundOff },
-    { header: 'Net Amount', width: 60, cell: num(r => dec(r, 'Item_NetAmount')), ...totalColsBase.netAmount }
+    { header: 'Sales Type', width: 48, cell: txt(r => str(r, 'SalesType')) },
+    { header: 'Bags', width: 28, cell: intNum(r => dec(r, 'Qty')), ...totalColsBase.qty },
+    { header: 'Weight', width: 44, cell: num(r => dec(r, 'Weight'), 3), ...totalColsBase.weight },
+    { header: 'Rate', width: 38, cell: num(r => dec(r, 'RateEx'), 2) },
+    { header: 'Basic', width: 48, cell: num(r => dec(r, 'BasicAmount')), ...totalColsBase.basic },
+    { header: 'Tax', width: 44, cell: num(r => taxOf(r)), ...totalColsBase.tax },
+    { header: 'Fright', width: 34, cell: num(r => dec(r, 'Item_FreightAmount')), ...totalColsBase.freight },
+    { header: 'TCS Tax Amt', width: 40, cell: num(r => dec(r, 'TCSTaxableAmount')), ...totalColsBase.tcsTaxable },
+    { header: 'TCS %', width: 26, cell: num(r => dec(r, 'TCSPer'), 2) },
+    { header: 'TCS Amt', width: 36, cell: num(r => dec(r, 'Item_TSCAmount')), ...totalColsBase.tcsAmt },
+    { header: 'RND', width: 24, cell: num(r => dec(r, 'RoundOff')), ...totalColsBase.roundOff },
+    { header: 'Net Amount', width: 50, cell: num(r => dec(r, 'Item_NetAmount')), ...totalColsBase.netAmount }
   ]
 };
 
