@@ -97,6 +97,8 @@ import cottonQualityTestRouter from "./cottonQualityTestRoutes.js";
 import cottonLotApprovalRouter from "./cottonLotApprovalRoutes.js";
 import cottonMixingIssueRequisitionRouter from "./cottonMixingIssueRequisitionRoutes.js";
 import cottonIssueRouter from "./cottonIssueRoutes.js";
+import itemRequisitionRouter from "./itemRequisitionRoutes.js";
+import itemRequisitionAdjustmentRouter from "./itemRequisitionAdjustmentRoutes.js";
 
 const router = express.Router();
 
@@ -163,6 +165,8 @@ const appRoutes = () => {
   router.use("/cotton-lot-approval", cottonLotApprovalRouter);
   router.use("/cotton-mixing-issue-requisition", cottonMixingIssueRequisitionRouter);
   router.use("/cotton-issue", cottonIssueRouter);
+  router.use("/item-requisition", itemRequisitionRouter);
+  router.use("/item-requisition-adjustment", itemRequisitionAdjustmentRouter);
   router.use("/service-order-expenses", serviceOrderExpensesRouter);
   router.use("/common-service-activity", commonServiceActivityRouter);
   router.use("/machine-service-schedule", machineServiceScheduleRouter);
