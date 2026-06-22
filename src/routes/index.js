@@ -85,6 +85,18 @@ import serviceActivityRouter from "./serviceActivityRoutes.js";
 import typeOfBreakdownRouter from "./typeOfBreakdownRoutes.js";
 import roleMenuRouter from "./roleMenuRoutes.js";
 import einvoiceRouter from "./einvoiceRoutes.js";
+import goodsInOutTypeRouter from "./goodsInOutTypeRoutes.js";
+import materialTypeRouter from "./materialTypeRoutes.js";
+import accountGroupRouter from "./accountGroupRoutes.js";
+import cottonPurchaseOrderRouter from "./cottonPurchaseOrderRoutes.js";
+import cottonPurchaseOrderAmendmentRouter from "./cottonPurchaseOrderAmendmentRoutes.js";
+import cottonArrivalRouter from "./cottonArrivalRoutes.js";
+import cottonWeighmentRouter from "./cottonWeighmentRoutes.js";
+import cottonWeighmentApprovalRouter from "./cottonWeighmentApprovalRoutes.js";
+import cottonQualityTestRouter from "./cottonQualityTestRoutes.js";
+import cottonLotApprovalRouter from "./cottonLotApprovalRoutes.js";
+import cottonMixingIssueRequisitionRouter from "./cottonMixingIssueRequisitionRoutes.js";
+import cottonIssueRouter from "./cottonIssueRoutes.js";
 
 const router = express.Router();
 
@@ -139,6 +151,18 @@ const appRoutes = () => {
   router.use("/station", stationRouter);
   router.use("/cqt-parameter", cqtParameterRouter);
   router.use("/cqt-std", cqtStdRouter);
+  router.use("/goods-in-out-type", goodsInOutTypeRouter);
+  router.use("/material-type", materialTypeRouter);
+  router.use("/account-group", accountGroupRouter);
+  router.use("/cotton-purchase-order", cottonPurchaseOrderRouter);
+  router.use("/cotton-purchase-order-amendment", cottonPurchaseOrderAmendmentRouter);
+  router.use("/cotton-arrival", cottonArrivalRouter);
+  router.use("/cotton-weighment", cottonWeighmentRouter);
+  router.use("/cotton-weighment-approval", cottonWeighmentApprovalRouter);
+  router.use("/cotton-quality-test", cottonQualityTestRouter);
+  router.use("/cotton-lot-approval", cottonLotApprovalRouter);
+  router.use("/cotton-mixing-issue-requisition", cottonMixingIssueRequisitionRouter);
+  router.use("/cotton-issue", cottonIssueRouter);
   router.use("/service-order-expenses", serviceOrderExpensesRouter);
   router.use("/common-service-activity", commonServiceActivityRouter);
   router.use("/machine-service-schedule", machineServiceScheduleRouter);
