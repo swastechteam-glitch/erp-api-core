@@ -1,6 +1,13 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import {
+  getCompanyGroups,
+  getCustomerTypes,
+  getStates,
+  getAgents,
+  getApprovals,
+} from "../utils/masters.js";
 
 // ---------------------------------------------------------------------------
 // Customer Approve master (port of the WinForms frmCustomerApprove)
@@ -262,24 +269,22 @@ export const getCustomerApproveOptions = async (req, res) => {
       return sendError(res, "Missing subDBName", 400);
 
     const pool = await getPool(req.headers.subdbname);
-    const map = (rows, vKey, lKey) =>
-      rows.map((r) => ({ value: r[vKey], label: r[lKey] }));
 
     const [companyGroups, customerTypes, states, agents, approvals] =
       await Promise.all([
-        pool.request().query("Select CompanyGroupCode, CompanyGroupName from tbl_CompanyGroup"),
-        pool.request().query("Select CustomerTypeCode, CustomerType from tbl_CustomerType"),
-        pool.request().query("Select StateCode, StateName from tbl_State"),
-        pool.request().query("Select AgentCode, AgentName from tbl_Agent"),
-        pool.request().query("Select ApprovalCode, ApprovalName from tbl_Approval"),
+        getCompanyGroups(pool),
+        getCustomerTypes(pool),
+        getStates(pool),
+        getAgents(pool),
+        getApprovals(pool),
       ]);
 
     return sendSuccess(res, {
-      companyGroups: map(companyGroups.recordset, "CompanyGroupCode", "CompanyGroupName"),
-      customerTypes: map(customerTypes.recordset, "CustomerTypeCode", "CustomerType"),
-      states: map(states.recordset, "StateCode", "StateName"),
-      agents: map(agents.recordset, "AgentCode", "AgentName"),
-      approvals: map(approvals.recordset, "ApprovalCode", "ApprovalName"),
+      companyGroups,
+      customerTypes,
+      states,
+      agents,
+      approvals,
     });
   } catch (err) {
     console.error("DB Error (getCustomerApproveOptions):", err);

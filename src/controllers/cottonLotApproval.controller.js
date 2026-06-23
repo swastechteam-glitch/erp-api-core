@@ -1,6 +1,12 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import {
+  getAgents,
+  getStations,
+  getRawMaterials,
+  getSuppliers,
+} from "../utils/masters.js";
 
 // ---------------------------------------------------------------------------
 // Cotton Lot Issue Approval (port of the WinForms frmCottonLotApproval)
@@ -47,17 +53,12 @@ export const getOptions = async (req, res) => {
     if (!req.headers.subdbname) return sendError(res, "Missing subDBName", 400);
     const pool = await getPool(req.headers.subdbname);
     const [agents, stations, varieties, suppliers] = await Promise.all([
-      pool.request().query("Select AgentCode, AgentName from tbl_Agent Order by AgentName"),
-      pool.request().query("Select StationCode, StationName from tbl_Station Order by StationName"),
-      pool.request().query("Select RawMaterialCode, RawMaterialName from tbl_RawMaterial Order by RawMaterialName"),
-      pool.request().query("Select SupplierCode, SupplierName from tbl_Supplier Order by SupplierName"),
+      getAgents(pool),
+      getStations(pool),
+      getRawMaterials(pool),
+      getSuppliers(pool, { usage: "all" }),
     ]);
-    return sendSuccess(res, {
-      agents: agents.recordset.map((r) => ({ value: r.AgentCode, label: r.AgentName })),
-      stations: stations.recordset.map((r) => ({ value: r.StationCode, label: r.StationName })),
-      varieties: varieties.recordset.map((r) => ({ value: r.RawMaterialCode, label: r.RawMaterialName })),
-      suppliers: suppliers.recordset.map((r) => ({ value: r.SupplierCode, label: r.SupplierName })),
-    });
+    return sendSuccess(res, { agents, stations, varieties, suppliers });
   } catch (err) {
     console.error("DB Error (CottonLotApproval.getOptions):", err);
     return sendError(res, err);

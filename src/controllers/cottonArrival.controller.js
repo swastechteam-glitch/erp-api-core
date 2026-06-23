@@ -1,6 +1,18 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import {
+  getAgents,
+  getStations,
+  getRawMaterials,
+  getPackingTypes,
+  getTaxes,
+  getCottonPackingMaterials,
+  getTransporters,
+  getCottonArrivalTypes,
+  PAYMENT_TYPES,
+  PAYMENT_MODES,
+} from "../utils/masters.js";
 
 // ---------------------------------------------------------------------------
 // Cotton Arrival / GRN (port of the WinForms frmCottonArrival)
@@ -114,35 +126,28 @@ export const getCottonArrivalOptions = async (req, res) => {
 
     const [agents, stations, varieties, packingTypes, taxes, packingMaterials, transporters, receiptTypes] =
       await Promise.all([
-        pool.request().query("Select AgentCode, AgentName from tbl_Agent where Status =1 Order by AgentName"),
-        pool.request().query("Select StationCode, StationName from tbl_Station WHERE Status = 1 order by StationName"),
-        pool.request().query("Select RawMaterialCode, RawMaterialName from tbl_Rawmaterial Where Status = 1 order by RawMaterialName"),
-        pool.request().query("Select PackingTypeCode, PackingType from tbl_PackingType order by PackingType"),
-        pool.request().query("Select TaxCode, TaxName, Tax from tbl_Tax where Status = 1 order by TaxName"),
-        pool.request().query("Select CottonPackingMaterialCode, CottonPackingMaterialName from tbl_CottonPackingMaterial where Status = 1 Order by CottonPackingMaterialName"),
-        pool.request().query("Select TransporterCode, TransporterName from tbl_Transporter where Status = 1 order by TransporterName"),
-        pool.request().query("Select CottonArrivalTypeCode, CottonArrivalTypeName from tbl_CottonArrivalType Where Status=1"),
+        getAgents(pool),
+        getStations(pool),
+        getRawMaterials(pool),
+        getPackingTypes(pool),
+        getTaxes(pool),
+        getCottonPackingMaterials(pool),
+        getTransporters(pool),
+        getCottonArrivalTypes(pool),
       ]);
 
     return sendSuccess(res, {
-      agents: agents.recordset.map((r) => ({ value: r.AgentCode, label: r.AgentName })),
-      stations: stations.recordset.map((r) => ({ value: r.StationCode, label: r.StationName })),
-      varieties: varieties.recordset.map((r) => ({ value: r.RawMaterialCode, label: r.RawMaterialName })),
-      packingTypes: packingTypes.recordset.map((r) => ({ value: r.PackingTypeCode, label: r.PackingType })),
-      taxes: taxes.recordset.map((r) => ({ value: r.TaxCode, label: r.TaxName, tax: r.Tax })),
-      packingMaterials: packingMaterials.recordset.map((r) => ({ value: r.CottonPackingMaterialCode, label: r.CottonPackingMaterialName })),
-      transporters: transporters.recordset.map((r) => ({ value: r.TransporterCode, label: r.TransporterName })),
+      agents,
+      stations,
+      varieties,
+      packingTypes,
+      taxes,
+      packingMaterials,
+      transporters,
       // ReceiptType is saved by NAME (the WinForms sends CottonArrivalTypeName).
-      receiptTypes: receiptTypes.recordset.map((r) => ({ value: r.CottonArrivalTypeName, label: r.CottonArrivalTypeName })),
-      paymentTypes: [
-        { value: 0, label: "SPOT" },
-        { value: 1, label: "FMD" },
-      ],
-      paymentModes: [
-        { value: 0, label: "IMMEDIATE" },
-        { value: 1, label: "CREDIT" },
-        { value: 2, label: "ADVANCE PAYMENT" },
-      ],
+      receiptTypes,
+      paymentTypes: PAYMENT_TYPES,
+      paymentModes: PAYMENT_MODES,
     });
   } catch (err) {
     console.error("DB Error (getCottonArrivalOptions):", err);

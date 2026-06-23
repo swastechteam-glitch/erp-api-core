@@ -1,6 +1,17 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import {
+  getSuppliers,
+  getAgents,
+  getStates,
+  getRawMaterials,
+  getPackingTypes,
+  getQualitySTDs,
+  getStationsByState as getStations,
+  PAYMENT_TYPES,
+  PAYMENT_MODES,
+} from "../utils/masters.js";
 
 // ---------------------------------------------------------------------------
 // Cotton Purchase Order transaction (port of the WinForms frmCottonPurchaseOrder)
@@ -437,73 +448,24 @@ export const getCottonPurchaseOrderOptions = async (req, res) => {
 
     const [suppliers, agents, states, varieties, packingTypes, qualitySTDs] =
       await Promise.all([
-        pool
-          .request()
-          .query(
-            "Select SupplierCode, SupplierName, Address1, Address2 from tbl_Supplier where Status=1 AND SupplierID IS NOT NULL AND Cotton=1 Order by SupplierName",
-          ),
-        pool
-          .request()
-          .query(
-            "Select AgentCode, AgentName from tbl_Agent where Status = 1 AND Cotton=1 Order by AgentName",
-          ),
-        pool
-          .request()
-          .query(
-            "Select StateCode, StateName from tbl_State Order by StateName",
-          ),
-        pool
-          .request()
-          .query(
-            "Select RawMaterialCode, RawMaterialName from tbl_RawMaterial Where Status=1 Order by RawMaterialName",
-          ),
-        pool
-          .request()
-          .query(
-            "Select PackingTypeCode, PackingType from tbl_PackingType Order by PackingType",
-          ),
-        pool
-          .request()
-          .query(
-            "Select CQTSTDCode, CQTSTDName from tbl_CQTSTD WHERE ISNULL(Cotton,0) = 1 AND Status = 1 Order by CQTSTDName",
-          ),
+        getSuppliers(pool, { usage: "cotton" }),
+        getAgents(pool, { usage: "cotton" }),
+        getStates(pool),
+        getRawMaterials(pool),
+        getPackingTypes(pool),
+        getQualitySTDs(pool, { usage: "cotton" }),
       ]);
 
     return sendSuccess(res, {
-      suppliers: suppliers.recordset.map((r) => ({
-        value: r.SupplierCode,
-        label: r.SupplierName,
-      })),
-      agents: agents.recordset.map((r) => ({
-        value: r.AgentCode,
-        label: r.AgentName,
-      })),
-      states: states.recordset.map((r) => ({
-        value: r.StateCode,
-        label: r.StateName,
-      })),
-      varieties: varieties.recordset.map((r) => ({
-        value: r.RawMaterialCode,
-        label: r.RawMaterialName,
-      })),
-      packingTypes: packingTypes.recordset.map((r) => ({
-        value: r.PackingTypeCode,
-        label: r.PackingType,
-      })),
-      qualitySTDs: qualitySTDs.recordset.map((r) => ({
-        value: r.CQTSTDCode,
-        label: r.CQTSTDName,
-      })),
+      suppliers,
+      agents,
+      states,
+      varieties,
+      packingTypes,
+      qualitySTDs,
       // WinForms combo indexes (sent as PaymentType / PayMode).
-      paymentTypes: [
-        { value: 0, label: "SPOT" },
-        { value: 1, label: "FMD" },
-      ],
-      paymentModes: [
-        { value: 0, label: "IMMEDIATE" },
-        { value: 1, label: "CREDIT" },
-        { value: 2, label: "ADVANCE PAYMENT" },
-      ],
+      paymentTypes: PAYMENT_TYPES,
+      paymentModes: PAYMENT_MODES,
     });
   } catch (err) {
     console.error("DB Error (getCottonPurchaseOrderOptions):", err);
@@ -516,21 +478,10 @@ export const getStationsByState = async (req, res) => {
   try {
     if (!req.headers.subdbname) return sendError(res, "Missing subDBName", 400);
 
-    const stateCode = toInt(req.query.stateCode);
     const pool = await getPool(req.headers.subdbname);
-    const result = await pool
-      .request()
-      .input("StateCode", sql.Int, stateCode)
-      .query(
-        "Select StationCode, StationName from tbl_Station Where StateCode = @StateCode Order By StationName",
-      );
+    const stations = await getStations(pool, toInt(req.query.stateCode));
 
-    return sendSuccess(res, {
-      stations: result.recordset.map((r) => ({
-        value: r.StationCode,
-        label: r.StationName,
-      })),
-    });
+    return sendSuccess(res, { stations });
   } catch (err) {
     console.error("DB Error (getStationsByState):", err);
     return sendError(res, err);

@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { getStates, getBanks } from "../utils/masters.js";
 
 // ---------------------------------------------------------------------------
 // Agent master (port of the WinForms frmAgent)
@@ -216,18 +217,10 @@ export const getAgentOptions = async (req, res) => {
       return sendError(res, "Missing subDBName", 400);
 
     const pool = await getPool(req.headers.subdbname);
-    const map = (rows, vKey, lKey) =>
-      rows.map((r) => ({ value: r[vKey], label: r[lKey] }));
 
-    const [states, banks] = await Promise.all([
-      pool.request().query("Select StateCode, StateName from tbl_State Order by StateName"),
-      pool.request().query("Select BankCode, BankName from tbl_Bank Order by BankName"),
-    ]);
+    const [states, banks] = await Promise.all([getStates(pool), getBanks(pool)]);
 
-    return sendSuccess(res, {
-      states: map(states.recordset, "StateCode", "StateName"),
-      banks: map(banks.recordset, "BankCode", "BankName"),
-    });
+    return sendSuccess(res, { states, banks });
   } catch (err) {
     console.error("DB Error (getAgentOptions):", err);
     return sendError(res, err);

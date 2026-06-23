@@ -1,6 +1,16 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import {
+  getSuppliers,
+  getPurchaseModes,
+  getPurchaseTypes,
+  getModesOfDespatch,
+  getTransporters,
+  getCurrencies,
+  getTaxes,
+  getCompanyStateCode,
+} from "../utils/masters.js";
 
 // ---------------------------------------------------------------------------
 // Purchase Order (port of the WinForms frmPurchaseOrder / frmPurchaseAdviceDetails).
@@ -53,34 +63,35 @@ export const getOptions = async (req, res) => {
     const companyCode = getCompanyCode(req);
     const pool = await getPool(req.headers.subdbname);
 
-    const [modes, types, suppliers, despatch, transporters, currencies, taxes, company] =
-      await Promise.all([
-        pool.request().query("SELECT PurchaseModeCode, PurchaseMode from tbl_PurchaseMode Order by PurchaseMode"),
-        pool.request().query("SELECT PurchaseTypeCode, PurchaseType from tbl_PurchaseType Order by PurchaseType"),
-        pool
-          .request()
-          .query("Select SupplierCode, SupplierName, StateCode, GSTNo from tbl_Supplier where Status = 1 AND Stores = 1 Order By SupplierName"),
-        pool.request().execute("sp_ModeOfDespatch_GetAll"),
-        pool.request().execute("sp_Transporter_GetAll"),
-        pool.request().query("Select CurrencyCode, CurrencyName, ShortName from tbl_Currency"),
-        pool.request().query("Select TaxCode, TaxName, Tax from tbl_Tax ORDER BY TaxName"),
-        pool.request().input("CompanyCode", sql.Int, companyCode).query("Select StateCode from tbl_Company Where CompanyCode = @CompanyCode"),
-      ]);
+    const [
+      purchaseModes,
+      purchaseTypes,
+      suppliers,
+      modesOfDespatch,
+      transporters,
+      currencies,
+      taxes,
+      companyStateCode,
+    ] = await Promise.all([
+      getPurchaseModes(pool),
+      getPurchaseTypes(pool),
+      getSuppliers(pool, { usage: "stores" }),
+      getModesOfDespatch(pool),
+      getTransporters(pool),
+      getCurrencies(pool),
+      getTaxes(pool),
+      getCompanyStateCode(pool, companyCode),
+    ]);
 
     return sendSuccess(res, {
-      purchaseModes: modes.recordset.map((r) => ({ value: r.PurchaseModeCode, label: r.PurchaseMode })),
-      purchaseTypes: types.recordset.map((r) => ({ value: r.PurchaseTypeCode, label: r.PurchaseType })),
-      suppliers: suppliers.recordset.map((r) => ({
-        value: r.SupplierCode,
-        label: r.SupplierName,
-        StateCode: toInt(r.StateCode),
-        GSTNo: r.GSTNo ?? "",
-      })),
-      modesOfDespatch: despatch.recordset.map((r) => ({ value: r.ModeOfDespatchCode, label: r.ModeOfDespatchName })),
-      transporters: transporters.recordset.map((r) => ({ value: r.TransporterCode, label: r.TransporterName })),
-      currencies: currencies.recordset.map((r) => ({ value: r.CurrencyCode, label: r.ShortName ?? r.CurrencyName })),
-      taxes: taxes.recordset.map((r) => ({ value: r.TaxCode, label: r.TaxName, tax: toNum(r.Tax) })),
-      companyStateCode: toInt(company.recordset?.[0]?.StateCode),
+      purchaseModes,
+      purchaseTypes,
+      suppliers,
+      modesOfDespatch,
+      transporters,
+      currencies,
+      taxes,
+      companyStateCode,
     });
   } catch (err) {
     console.error("DB Error (PurchaseOrder.getOptions):", err);

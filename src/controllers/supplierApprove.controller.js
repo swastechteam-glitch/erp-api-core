@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { getStates, getBanks, getCompanyGroups } from "../utils/masters.js";
 
 // ---------------------------------------------------------------------------
 // Supplier Approval master (port of the WinForms frmSupplierApproval)
@@ -269,20 +270,14 @@ export const getSupplierOptions = async (req, res) => {
       return sendError(res, "Missing subDBName", 400);
 
     const pool = await getPool(req.headers.subdbname);
-    const map = (rows, vKey, lKey) =>
-      rows.map((r) => ({ value: r[vKey], label: r[lKey] }));
 
     const [states, banks, companyGroups] = await Promise.all([
-      pool.request().query("Select StateCode, StateName from tbl_State"),
-      pool.request().query("Select BankCode, BankName from tbl_Bank"),
-      pool.request().query("Select CompanyGroupCode, CompanyGroupName from tbl_CompanyGroup"),
+      getStates(pool),
+      getBanks(pool),
+      getCompanyGroups(pool),
     ]);
 
-    return sendSuccess(res, {
-      states: map(states.recordset, "StateCode", "StateName"),
-      banks: map(banks.recordset, "BankCode", "BankName"),
-      companyGroups: map(companyGroups.recordset, "CompanyGroupCode", "CompanyGroupName"),
-    });
+    return sendSuccess(res, { states, banks, companyGroups });
   } catch (err) {
     console.error("DB Error (getSupplierOptions):", err);
     return sendError(res, err);

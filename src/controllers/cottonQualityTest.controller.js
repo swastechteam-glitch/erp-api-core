@@ -1,6 +1,13 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import {
+  getQualitySTDs,
+  getAgents,
+  getStations,
+  getRawMaterials,
+  getSuppliers,
+} from "../utils/masters.js";
 
 // ---------------------------------------------------------------------------
 // Cotton Quality Test / CQT (port of the WinForms frmCottonTest)
@@ -68,13 +75,11 @@ export const getOptions = async (req, res) => {
               "AND ArrivalCode NOT IN (Select ArrivalCode from tbl_CottonQualityTest where CompanyCode = @CompanyCode) " +
               "AND ArrivalDate >= '2024-01-01' Order by MillLotNo DESC"
           ),
-        pool
-          .request()
-          .query("Select CQTSTDCode, CQTSTDName from tbl_CQTSTD WHERE ISNULL(Cotton,0) = 1 Order by CQTSTDName"),
-        pool.request().query("Select AgentCode, AgentName from tbl_Agent Order by AgentName"),
-        pool.request().query("Select StationCode, StationName from tbl_Station Order by StationName"),
-        pool.request().query("Select RawMaterialCode, RawMaterialName from tbl_RawMaterial Order by RawMaterialName"),
-        pool.request().query("Select SupplierCode, SupplierName from tbl_Supplier Order by SupplierName"),
+        getQualitySTDs(pool, { usage: "cotton" }),
+        getAgents(pool),
+        getStations(pool),
+        getRawMaterials(pool),
+        getSuppliers(pool, { usage: "all" }),
       ]);
 
     return sendSuccess(res, {
@@ -83,11 +88,11 @@ export const getOptions = async (req, res) => {
         label: r.MillLotNo,
         ...r,
       })),
-      qualitySTDs: qualitySTDs.recordset.map((r) => ({ value: r.CQTSTDCode, label: r.CQTSTDName })),
-      agents: agents.recordset.map((r) => ({ value: r.AgentCode, label: r.AgentName })),
-      stations: stations.recordset.map((r) => ({ value: r.StationCode, label: r.StationName })),
-      varieties: varieties.recordset.map((r) => ({ value: r.RawMaterialCode, label: r.RawMaterialName })),
-      suppliers: suppliers.recordset.map((r) => ({ value: r.SupplierCode, label: r.SupplierName })),
+      qualitySTDs,
+      agents,
+      stations,
+      varieties,
+      suppliers,
     });
   } catch (err) {
     console.error("DB Error (CottonQualityTest.getOptions):", err);
