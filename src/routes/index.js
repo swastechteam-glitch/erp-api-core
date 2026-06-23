@@ -99,6 +99,8 @@ import cottonMixingIssueRequisitionRouter from "./cottonMixingIssueRequisitionRo
 import cottonIssueRouter from "./cottonIssueRoutes.js";
 import itemRequisitionRouter from "./itemRequisitionRoutes.js";
 import itemRequisitionAdjustmentRouter from "./itemRequisitionAdjustmentRoutes.js";
+import itemIndentRouter from "./itemIndentRoutes.js";
+import purchaseOrderRouter from "./purchaseOrderRoutes.js";
 
 const router = express.Router();
 
@@ -167,6 +169,8 @@ const appRoutes = () => {
   router.use("/cotton-issue", cottonIssueRouter);
   router.use("/item-requisition", itemRequisitionRouter);
   router.use("/item-requisition-adjustment", itemRequisitionAdjustmentRouter);
+  router.use("/item-indent", itemIndentRouter);
+  router.use("/purchase-order", purchaseOrderRouter);
   router.use("/service-order-expenses", serviceOrderExpensesRouter);
   router.use("/common-service-activity", commonServiceActivityRouter);
   router.use("/machine-service-schedule", machineServiceScheduleRouter);
