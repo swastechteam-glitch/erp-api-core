@@ -216,6 +216,25 @@ export const getMachineGrid = async (req, res) => {
     };
     const addable = addRes.recordset.map((r) => mapNew(r, newDefaults));
 
+    // The AddMachine SP doesn't always return Speed — backfill it from
+    // tbl_Machine so the Speed column isn't blank. Best-effort: if the column
+    // doesn't exist on this schema, skip silently.
+    try {
+      const missing = addable.filter((a) => a.Speed == null && a.MachineCode);
+      const codes = [...new Set(missing.map((a) => parseInt(a.MachineCode)).filter(Boolean))];
+      if (codes.length) {
+        const spRes = await pool
+          .request()
+          .query(`Select MachineCode, Speed from tbl_Machine where MachineCode in (${codes.join(",")})`);
+        const speedMap = new Map(spRes.recordset.map((r) => [r.MachineCode, r.Speed]));
+        addable.forEach((a) => {
+          if (a.Speed == null) a.Speed = speedMap.get(parseInt(a.MachineCode)) ?? a.Speed;
+        });
+      }
+    } catch (speedErr) {
+      console.warn("Speed backfill skipped:", speedErr.message);
+    }
+
     return sendSuccess(res, {
       master,
       advanceDays,

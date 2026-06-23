@@ -35,13 +35,19 @@ const toNum = (v) => {
 
 const toBit = (v) => (v === true || v === 1 || v === "1" ? 1 : 0);
 
+const scalarRaw = async (request, proc) => {
+  const r = await request.execute(proc);
+  const row = r.recordset?.[0];
+  return row ? Object.values(row)[0] : null;
+};
 // vw_CottonPurchaseOrder has duplicate column names (e.g. AgentCode appears
 // twice), and mssql returns duplicate columns as an array (["49","49"]).
 // Collapse any array-valued column back to its first scalar value.
 const flattenRow = (row) => {
   if (!row) return row;
   const out = {};
-  for (const k of Object.keys(row)) out[k] = Array.isArray(row[k]) ? row[k][0] : row[k];
+  for (const k of Object.keys(row))
+    out[k] = Array.isArray(row[k]) ? row[k][0] : row[k];
   return out;
 };
 
@@ -53,7 +59,7 @@ const getSeationCode = (req) =>
     req.headers.seationcode ??
       req.body?.SeationCode ??
       req.query?.seationCode ??
-      1
+      1,
   ) || 1;
 
 // GET /cotton-purchase-order/lists  -> mirrors frmCottonPurchaseOrderDetails list
@@ -68,7 +74,10 @@ export const getCottonPurchaseOrderList = async (req, res) => {
       .input("FYCode", sql.Int, getFYCode(req))
       .execute("sp_CottonPurchaseOrder_GetAll");
 
-    const data = result.recordset.map((item) => ({ ...item, id: item.CPOCode }));
+    const data = result.recordset.map((item) => ({
+      ...item,
+      id: item.CPOCode,
+    }));
     return sendPaginated(res, data, req.query);
   } catch (err) {
     console.error("DB Error (getCottonPurchaseOrderList):", err);
@@ -92,7 +101,7 @@ export const getCottonPurchaseOrderById = async (req, res) => {
       .input("CompanyCode", sql.Int, companyCode)
       .input("CPOCode", sql.Int, code)
       .query(
-        "Select * from vw_CottonPurchaseOrder where CompanyCode = @CompanyCode AND CPOCode = @CPOCode"
+        "Select * from vw_CottonPurchaseOrder where CompanyCode = @CompanyCode AND CPOCode = @CPOCode",
       );
 
     if (!head.recordset.length)
@@ -103,7 +112,7 @@ export const getCottonPurchaseOrderById = async (req, res) => {
       .input("CompanyCode", sql.Int, companyCode)
       .input("CPOCode", sql.Int, code)
       .query(
-        "Select * from vw_CottonPurchaseOrderDetails where CompanyCode = @CompanyCode AND CPOCode = @CPOCode"
+        "Select * from vw_CottonPurchaseOrderDetails where CompanyCode = @CompanyCode AND CPOCode = @CPOCode",
       );
 
     return sendSuccess(res, {
@@ -122,16 +131,26 @@ export const getCottonPurchaseOrderNextNo = async (req, res) => {
     if (!req.headers.subdbname) return sendError(res, "Missing subDBName", 400);
 
     const pool = await getPool(req.headers.subdbname);
-    const result = await pool
-      .request()
-      .input("SeationCode", sql.Int, getSeationCode(req))
-      .input("CompanyCode", sql.Int, getCompanyCode(req))
-      .input("FYCode", sql.Int, getFYCode(req))
-      .execute("sp_CottonPurchaseOrder_OrderNo");
+    const result = await scalarRaw(
+      pool
+        .request()
+        .input("SeationCode", sql.Int, getSeationCode(req))
+        .input("CompanyCode", sql.Int, getCompanyCode(req))
+        .input("FYCode", sql.Int, getFYCode(req)),
+      "sp_CottonPurchaseOrder_OrderNo",
+    );
 
-    const row = result.recordset?.[0];
-    const nextNo = row ? toInt(Object.values(row)[0]) : 0;
-    return sendSuccess(res, { nextNo });
+    // const result = await pool
+    //   .request()
+    //   .input("SeationCode", sql.Int, getSeationCode(req))
+    //   .input("CompanyCode", sql.Int, getCompanyCode(req))
+    //   .input("FYCode", sql.Int, getFYCode(req))
+    //   .execute("sp_CottonPurchaseOrder_OrderNo");
+    console.log(result, "result");
+    return sendSuccess(res, { nextNo: result });
+    // const row = result.recordset?.[0];
+    // const nextNo = row ? toInt(Object.values(row)[0]) : 0;
+    // return sendSuccess(res, { nextNo });
   } catch (err) {
     console.error("DB Error (getCottonPurchaseOrderNextNo):", err);
     return sendError(res, err);
@@ -151,12 +170,12 @@ export const getQualityStdParameters = async (req, res) => {
       .request()
       .input("CQTSTDCode", sql.Int, code)
       .query(
-        "Select * from vw_CQTSTDDetails Where CQTSTDCode = @CQTSTDCode Order by OrderNo"
+        "Select * from vw_CQTSTDDetails Where CQTSTDCode = @CQTSTDCode Order by OrderNo",
       );
 
     // Only the parameter rows the WinForms grid would show (valid parameter code).
     const rows = (result.recordset || []).filter(
-      (r) => toInt(r.CQTParameterCode) > 0
+      (r) => toInt(r.CQTParameterCode) > 0,
     );
     return sendSuccess(res, { parameters: rows });
   } catch (err) {
@@ -191,12 +210,12 @@ const saveOrUpdate = async (req, res, isEdit) => {
       return sendError(res, "Select the Broker Name", 400);
     if (toInt(b.StationCode) <= 0)
       return sendError(res, "Select the Station", 400);
-    if (toInt(b.StateCode) <= 0)
-      return sendError(res, "Select the State", 400);
+    if (toInt(b.StateCode) <= 0) return sendError(res, "Select the State", 400);
     if (toInt(b.RawMaterialCode) <= 0)
       return sendError(res, "Select the Variety", 400);
     if (toNum(b.Qty) <= 0) return sendError(res, "Enter the Purchase Qty", 400);
-    if (toNum(b.Rate) <= 0) return sendError(res, "Enter the Purchase Rate", 400);
+    if (toNum(b.Rate) <= 0)
+      return sendError(res, "Enter the Purchase Rate", 400);
     if (toInt(b.CQTSTDCode) <= 0)
       return sendError(res, "Select the Quality STD", 400);
 
@@ -223,7 +242,11 @@ const saveOrUpdate = async (req, res, isEdit) => {
     const head = new sql.Request(tx);
     if (isEdit) head.input("CPOCode", sql.Int, code);
     head.input("CPONo", sql.Int, cpoNo);
-    head.input("CPODate", sql.DateTime, b.CPODate ? new Date(b.CPODate) : new Date());
+    head.input(
+      "CPODate",
+      sql.DateTime,
+      b.CPODate ? new Date(b.CPODate) : new Date(),
+    );
     head.input("SupplierCode", sql.Int, toInt(b.SupplierCode));
     head.input("AgentCode", sql.Int, toInt(b.AgentCode));
     head.input("StationCode", sql.Int, toInt(b.StationCode));
@@ -238,8 +261,16 @@ const saveOrUpdate = async (req, res, isEdit) => {
     head.input("PackingTypeCode", sql.Int, toInt(b.PackingTypeCode) || 2);
     head.input("Qty", sql.Decimal(18, 3), toNum(b.Qty));
     head.input("Rate", sql.Decimal(18, 3), toNum(b.Rate));
-    head.input("DespatchDetails", sql.NVarChar, (b.DespatchDetails || "").toString().trim());
-    head.input("PaymentDetails", sql.NVarChar, (b.PaymentDetails || "").toString().trim());
+    head.input(
+      "DespatchDetails",
+      sql.NVarChar,
+      (b.DespatchDetails || "").toString().trim(),
+    );
+    head.input(
+      "PaymentDetails",
+      sql.NVarChar,
+      (b.PaymentDetails || "").toString().trim(),
+    );
     head.input("Length", sql.Decimal(18, 2), toNum(b.Length));
     head.input("Mic", sql.Decimal(18, 2), toNum(b.Mic));
     head.input("Sth", sql.Decimal(18, 2), toNum(b.Sth));
@@ -255,13 +286,21 @@ const saveOrUpdate = async (req, res, isEdit) => {
     head.input("ToTrash", sql.Decimal(18, 2), toNum(b.ToTrash));
     head.input("ToMoisture", sql.Decimal(18, 2), toNum(b.ToMoisture));
     head.input("CancelQty", sql.Decimal(18, 3), toNum(b.CancelQty));
-    head.input("CancelRemarks", sql.NVarChar, (b.CancelRemarks || "").toString().trim());
+    head.input(
+      "CancelRemarks",
+      sql.NVarChar,
+      (b.CancelRemarks || "").toString().trim(),
+    );
     head.input("FYCode", sql.Int, fyCode);
     head.input("SeationCode", sql.Int, seationCode);
     head.input("CompanyCode", sql.Int, companyCode);
     head.input("User", sql.Int, parseInt(userId));
     head.input("Node", sql.Int, parseInt(nodeCode));
-    head.input("LegalName", sql.NVarChar, (b.LegalName || "").toString().trim());
+    head.input(
+      "LegalName",
+      sql.NVarChar,
+      (b.LegalName || "").toString().trim(),
+    );
 
     const headRes = await head.execute("sp_CottonPurchaseOrder_AddEdit");
     const scalarRow = headRes.recordset?.[0];
@@ -286,7 +325,11 @@ const saveOrUpdate = async (req, res, isEdit) => {
         .input("ToParameter", sql.Decimal(18, 2), toNum(d.ToParameter))
         .input("To1", sql.NVarChar, (d.To1 || "").toString().trim())
         .input("PartyFrom", sql.Decimal(18, 2), toNum(d.PartyFrom))
-        .input("PartyFrom1", sql.NVarChar, (d.PartyFrom1 || "").toString().trim())
+        .input(
+          "PartyFrom1",
+          sql.NVarChar,
+          (d.PartyFrom1 || "").toString().trim(),
+        )
         .input("PartyTo", sql.Decimal(18, 2), toNum(d.PartyTo))
         .input("PartyTo1", sql.NVarChar, (d.PartyTo1 || "").toString().trim())
         .input("CompanyCode", sql.Int, companyCode)
@@ -313,7 +356,7 @@ const saveOrUpdate = async (req, res, isEdit) => {
       res,
       { CPOCode: cpoCode, CPONo: cpoNo },
       isEdit ? "The record is updated" : "The record is saved",
-      isEdit ? 200 : 201
+      isEdit ? 200 : 201,
     );
   } catch (err) {
     if (tx) {
@@ -352,13 +395,13 @@ export const deleteCottonPurchaseOrder = async (req, res) => {
       .input("CompanyCode", sql.Int, companyCode)
       .input("CPOCode", sql.Int, code)
       .query(
-        "Select 1 from tbl_CottonArrival Where CompanyCode = @CompanyCode AND CPOCode = @CPOCode"
+        "Select 1 from tbl_CottonArrival Where CompanyCode = @CompanyCode AND CPOCode = @CPOCode",
       );
     if (arrived.recordset.length)
       return sendError(
         res,
         "The Order Cannot be Deleted, Because it has Arrived",
-        409
+        409,
       );
 
     await pool
@@ -374,7 +417,11 @@ export const deleteCottonPurchaseOrder = async (req, res) => {
       err.message &&
       (err.message.includes("REFERENCE") || err.message.includes("FK_"))
     ) {
-      return sendError(res, "You can not delete the Cotton Purchase Order!", 409);
+      return sendError(
+        res,
+        "You can not delete the Cotton Purchase Order!",
+        409,
+      );
     }
     console.error("DB Error (deleteCottonPurchaseOrder):", err);
     return sendError(res, err);
@@ -390,31 +437,63 @@ export const getCottonPurchaseOrderOptions = async (req, res) => {
 
     const [suppliers, agents, states, varieties, packingTypes, qualitySTDs] =
       await Promise.all([
-        pool.request().query(
-          "Select SupplierCode, SupplierName from tbl_Supplier where Status=1 AND SupplierID IS NOT NULL AND Cotton=1 Order by SupplierName"
-        ),
-        pool.request().query(
-          "Select AgentCode, AgentName from tbl_Agent where Status = 1 AND Cotton=1 Order by AgentName"
-        ),
-        pool.request().query("Select StateCode, StateName from tbl_State Order by StateName"),
-        pool.request().query(
-          "Select RawMaterialCode, RawMaterialName from tbl_RawMaterial Where Status=1 Order by RawMaterialName"
-        ),
-        pool.request().query(
-          "Select PackingTypeCode, PackingType from tbl_PackingType Order by PackingType"
-        ),
-        pool.request().query(
-          "Select CQTSTDCode, CQTSTDName from tbl_CQTSTD WHERE ISNULL(Cotton,0) = 1 AND Status = 1 Order by CQTSTDName"
-        ),
+        pool
+          .request()
+          .query(
+            "Select SupplierCode, SupplierName, Address1, Address2 from tbl_Supplier where Status=1 AND SupplierID IS NOT NULL AND Cotton=1 Order by SupplierName",
+          ),
+        pool
+          .request()
+          .query(
+            "Select AgentCode, AgentName from tbl_Agent where Status = 1 AND Cotton=1 Order by AgentName",
+          ),
+        pool
+          .request()
+          .query(
+            "Select StateCode, StateName from tbl_State Order by StateName",
+          ),
+        pool
+          .request()
+          .query(
+            "Select RawMaterialCode, RawMaterialName from tbl_RawMaterial Where Status=1 Order by RawMaterialName",
+          ),
+        pool
+          .request()
+          .query(
+            "Select PackingTypeCode, PackingType from tbl_PackingType Order by PackingType",
+          ),
+        pool
+          .request()
+          .query(
+            "Select CQTSTDCode, CQTSTDName from tbl_CQTSTD WHERE ISNULL(Cotton,0) = 1 AND Status = 1 Order by CQTSTDName",
+          ),
       ]);
 
     return sendSuccess(res, {
-      suppliers: suppliers.recordset.map((r) => ({ value: r.SupplierCode, label: r.SupplierName })),
-      agents: agents.recordset.map((r) => ({ value: r.AgentCode, label: r.AgentName })),
-      states: states.recordset.map((r) => ({ value: r.StateCode, label: r.StateName })),
-      varieties: varieties.recordset.map((r) => ({ value: r.RawMaterialCode, label: r.RawMaterialName })),
-      packingTypes: packingTypes.recordset.map((r) => ({ value: r.PackingTypeCode, label: r.PackingType })),
-      qualitySTDs: qualitySTDs.recordset.map((r) => ({ value: r.CQTSTDCode, label: r.CQTSTDName })),
+      suppliers: suppliers.recordset.map((r) => ({
+        value: r.SupplierCode,
+        label: r.SupplierName,
+      })),
+      agents: agents.recordset.map((r) => ({
+        value: r.AgentCode,
+        label: r.AgentName,
+      })),
+      states: states.recordset.map((r) => ({
+        value: r.StateCode,
+        label: r.StateName,
+      })),
+      varieties: varieties.recordset.map((r) => ({
+        value: r.RawMaterialCode,
+        label: r.RawMaterialName,
+      })),
+      packingTypes: packingTypes.recordset.map((r) => ({
+        value: r.PackingTypeCode,
+        label: r.PackingType,
+      })),
+      qualitySTDs: qualitySTDs.recordset.map((r) => ({
+        value: r.CQTSTDCode,
+        label: r.CQTSTDName,
+      })),
       // WinForms combo indexes (sent as PaymentType / PayMode).
       paymentTypes: [
         { value: 0, label: "SPOT" },
@@ -443,11 +522,14 @@ export const getStationsByState = async (req, res) => {
       .request()
       .input("StateCode", sql.Int, stateCode)
       .query(
-        "Select StationCode, StationName from tbl_Station Where StateCode = @StateCode Order By StationName"
+        "Select StationCode, StationName from tbl_Station Where StateCode = @StateCode Order By StationName",
       );
 
     return sendSuccess(res, {
-      stations: result.recordset.map((r) => ({ value: r.StationCode, label: r.StationName })),
+      stations: result.recordset.map((r) => ({
+        value: r.StationCode,
+        label: r.StationName,
+      })),
     });
   } catch (err) {
     console.error("DB Error (getStationsByState):", err);

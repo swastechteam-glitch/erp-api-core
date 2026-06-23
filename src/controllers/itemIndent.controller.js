@@ -37,8 +37,9 @@ const D = (v) => (v ? new Date(v) : null);
 const scalar = async (request, proc) => {
   const r = await request.execute(proc);
   const row = r.recordset?.[0];
-  return row ? toInt(Object.values(row)[0]) : 0;
+  return row ? Object.values(row)[0] : null;
 };
+
 
 // GET /item-indent/options
 export const getOptions = async (req, res) => {

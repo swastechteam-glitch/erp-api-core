@@ -135,4 +135,10 @@ export const applyBranchCode = (request, headers) => {
   }
 };
 
+// export const scalarRaw = async (request, proc) => {
+//   const r = await request.execute(proc);
+//   const row = r.recordset?.[0];
+//   return row ? Object.values(row)[0] : null;
+// };
+
 

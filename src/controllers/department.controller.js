@@ -1,6 +1,6 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
-import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { sendSuccess, sendError, sendPaginated, dbErrorMessage } from "../utils/response.js";
 
 // ---------------------------------------------------------------------------
 // Department master (port of the WinForms frmDepartment)
@@ -206,10 +206,13 @@ const saveOrUpdateDepartment = async (req, res, isEdit) => {
       await buildRequest(true).execute("sp_Department_AddEdit");
     } catch (spErr) {
       // SP doesn't accept the man-power params on this schema -> retry without.
-      if (/parameter|argument/i.test(spErr.message)) {
+      // Read the FULL message (mssql may hide it in precedingErrors), otherwise
+      // a "too many arguments" failure looks empty and the retry never fires.
+      const spMsg = dbErrorMessage(spErr);
+      if (/too many arguments|parameter|argument|was not supplied/i.test(spMsg)) {
         console.warn(
           "sp_Department_AddEdit rejected man-power params, retrying without:",
-          spErr.message
+          spMsg
         );
         await buildRequest(false).execute("sp_Department_AddEdit");
       } else {
@@ -224,12 +227,13 @@ const saveOrUpdateDepartment = async (req, res, isEdit) => {
       isEdit ? 200 : 201
     );
   } catch (err) {
+    const msg = dbErrorMessage(err);
     // Unique constraint -> friendly 409 (matches form behaviour).
-    if (err.message && err.message.includes("UK_DepartmentName_tblDepartment")) {
+    if (/UK_DepartmentName_tblDepartment|unique key|duplicate key/i.test(msg)) {
       return sendError(res, "Already exist the Department Name", 409);
     }
-    console.error("DB Error (saveOrUpdateDepartment):", err);
-    return sendError(res, err);
+    console.error("DB Error (saveOrUpdateDepartment):", msg || err);
+    return sendError(res, msg || "Failed to save the department");
   }
 };
 

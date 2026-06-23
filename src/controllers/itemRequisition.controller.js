@@ -29,6 +29,9 @@ const toNum = (v) => {
   const n = Number(v);
   return Number.isNaN(n) ? 0 : n;
 };
+// Display number zero-padded to 6 digits, matching the SP
+// sp_ItemRequisition_ItemRequisitionNo (73 -> "000073" -> "REQ000073").
+const padReqNo = (n) => String(toInt(n)).padStart(6, "0");
 const getCompanyCode = (req) => toInt(req.headers.companyCode);
 const getFYCode = (req) => toInt(req.headers.FYCode);
 const D = (v) => (v ? new Date(v) : null);
@@ -37,6 +40,13 @@ const scalar = async (request, proc) => {
   const r = await request.execute(proc);
   const row = r.recordset?.[0];
   return row ? toInt(Object.values(row)[0]) : 0;
+};
+
+// Like scalar, but keeps the raw value (preserves zero-padding e.g. "000073")
+const scalarRaw = async (request, proc) => {
+  const r = await request.execute(proc);
+  const row = r.recordset?.[0];
+  return row ? Object.values(row)[0] : null;
 };
 
 // GET /item-requisition/options
@@ -118,7 +128,7 @@ export const getNextNo = async (req, res) => {
   try {
     if (!req.headers.subdbname) return sendError(res, "Missing subDBName", 400);
     const pool = await getPool(req.headers.subdbname);
-    const no = await scalar(
+    const no = await scalarRaw(
       pool
         .request()
         .input("CompanyCode", sql.Int, getCompanyCode(req))
@@ -269,7 +279,9 @@ const saveOrUpdate = async (req, res, isEdit) => {
             .input("RequisitionType", sql.NVarChar, REQ_TYPE),
           "sp_ItemRequisition_ItemRequisitionNo"
         );
-    const strReqNo = isEdit ? b.strItemRequisitionNo || `REQ${reqNo}` : `REQ${reqNo}`;
+    const strReqNo = isEdit
+      ? b.strItemRequisitionNo || `REQ${padReqNo(reqNo)}`
+      : `REQ${padReqNo(reqNo)}`;
 
     tx = new sql.Transaction(pool);
     await tx.begin();
