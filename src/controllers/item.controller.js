@@ -62,6 +62,65 @@ export const getItemList = async (req, res) => {
   }
 };
 
+// GET /item/search?name=  -> existing item names matching the typed text.
+// Mirrors the WinForms Item-Name typeahead: "Select ItemName from vw_Item
+// Where ItemName like '%...%'" — used to surface/prevent duplicate items.
+export const searchItems = async (req, res) => {
+  try {
+    if (!req.headers.subdbname)
+      return sendError(res, "Missing subDBName", 400);
+
+    const term = (req.query.name || "").toString().trim();
+    if (!term) return sendSuccess(res, []);
+
+    const pool = await getPool(req.headers.subdbname);
+    const result = await pool
+      .request()
+      .input("Name", sql.NVarChar, `%${term}%`)
+      .query(
+        "Select Top 20 ItemCode, ItemName from vw_Item Where ItemName like @Name Order by ItemName"
+      );
+
+    return sendSuccess(res, result.recordset);
+  } catch (err) {
+    console.error("DB Error (searchItems):", err);
+    return sendError(res, err);
+  }
+};
+
+// GET /item/next-item-id/:departmentCode  -> auto-generated Item ID.
+// Ports WinForms Bind_ItemID: Left(Department.ShortName, 4) + (Max(ItemCode)+1).
+export const getNextItemId = async (req, res) => {
+  try {
+    if (!req.headers.subdbname)
+      return sendError(res, "Missing subDBName", 400);
+
+    const code = parseInt(req.params.departmentCode);
+    if (!code) return sendSuccess(res, { itemId: "" });
+
+    const pool = await getPool(req.headers.subdbname);
+
+    const deptRes = await pool
+      .request()
+      .input("DepartmentCode", sql.Int, code)
+      .query(
+        "Select ShortName from tbl_Department where DepartmentCode = @DepartmentCode"
+      );
+    const shortName = (deptRes.recordset[0]?.ShortName || "").toString();
+
+    const maxRes = await pool
+      .request()
+      .query("Select ISNULL(Max(ItemCode),0) as MaxCode from tbl_Item");
+    const nextCode = (maxRes.recordset[0]?.MaxCode || 0) + 1;
+
+    const itemId = shortName.substring(0, 4) + nextCode;
+    return sendSuccess(res, { itemId });
+  } catch (err) {
+    console.error("DB Error (getNextItemId):", err);
+    return sendError(res, err);
+  }
+};
+
 // GET /item/list/:itemCode  -> single record (vw_Item_WithImage)
 export const getItemById = async (req, res) => {
   try {
