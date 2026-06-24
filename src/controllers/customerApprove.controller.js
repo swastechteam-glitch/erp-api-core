@@ -79,7 +79,13 @@ export const getCustomerApproveById = async (req, res) => {
       return sendError(res, "Customer not found", 404);
 
     const row = result.recordset[0];
-    return sendSuccess(res, { ...row, StatusText: STATUS_LABEL(row.Status) });
+    return sendSuccess(res, {
+      ...row,
+      // vw_Customer exposes the column as lowercase `customertypeCode`; expose
+      // the PascalCase alias the form field (CustomerTypeCode) reads/writes by.
+      CustomerTypeCode: row.CustomerTypeCode ?? row.customertypeCode,
+      StatusText: STATUS_LABEL(row.Status),
+    });
   } catch (err) {
     console.error("DB Error (getCustomerApproveById):", err);
     return sendError(res, err);

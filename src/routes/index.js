@@ -102,6 +102,7 @@ import itemRequisitionRouter from "./itemRequisitionRoutes.js";
 import itemRequisitionAdjustmentRouter from "./itemRequisitionAdjustmentRoutes.js";
 import itemIndentRouter from "./itemIndentRoutes.js";
 import purchaseOrderRouter from "./purchaseOrderRoutes.js";
+import gstRouter from "./gstRoutes.js";
 
 const router = express.Router();
 
@@ -173,6 +174,7 @@ const appRoutes = () => {
   router.use("/item-requisition-adjustment", itemRequisitionAdjustmentRouter);
   router.use("/item-indent", itemIndentRouter);
   router.use("/purchase-order", purchaseOrderRouter);
+  router.use("/gst", gstRouter);
   router.use("/service-order-expenses", serviceOrderExpensesRouter);
   router.use("/common-service-activity", commonServiceActivityRouter);
   router.use("/machine-service-schedule", machineServiceScheduleRouter);

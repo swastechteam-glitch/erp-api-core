@@ -36,6 +36,64 @@ const getCompanyCode = (req) => toInt(req.headers.companyCode);
 const getFYCode = (req) => toInt(req.headers.FYCode);
 const D = (v) => (v ? new Date(v) : null);
 
+const pad2 = (n) => String(n).padStart(2, "0");
+const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+// Req Date rules (port of frmItemRequisition's date logic):
+//   - max = server today (no future dates)
+//   - min = today - Prev_StoreDays (tbl_Setting), else today (no back-dating)
+//   - enabled = the user is level 1 (admin) OR tbl_Setting.DateEnable = 1
+// Defensive: any failure falls back to "today only, editable".
+const buildStoreDateConfig = async (pool, req) => {
+  let serverDate = ymd(new Date());
+  let prevDays = 0;
+  let dateEnable = 0;
+  let settingsRead = false;
+  let isAdmin = true; // fail-open: only lock a user we positively confirm is limited
+  try {
+    const s = await pool
+      .request()
+      .query(
+        "SELECT TOP 1 ISNULL(Prev_StoreDays,0) AS PrevDays, ISNULL(DateEnable,0) AS DateEnable, " +
+          "CONVERT(varchar(10), GETDATE(), 23) AS ServerDate FROM tbl_Setting"
+      );
+    const row = s.recordset?.[0] || {};
+    if (row.ServerDate) serverDate = String(row.ServerDate).slice(0, 10);
+    prevDays = toInt(row.PrevDays);
+    dateEnable = toInt(row.DateEnable);
+    settingsRead = true;
+  } catch (_) {
+    /* keep defaults */
+  }
+  try {
+    const u = await pool
+      .request()
+      .input("uid", sql.Int, toInt(req.headers.userId))
+      .query("SELECT TOP 1 UserLevel FROM vw_User WHERE UserCode = @uid");
+    const raw = u.recordset?.[0]?.UserLevel;
+    // UserLevel is encoded as a string (";" = administrator). A plain "1" or an
+    // empty/unknown value is also treated as full access. Anything else = limited.
+    const lvl = String(raw ?? "").trim();
+    isAdmin = lvl === "" || lvl === ";" || lvl === "1" || toInt(raw) === 1;
+  } catch (_) {
+    /* unknown -> treat as admin (don't lock out) */
+  }
+
+  const [y, m, d] = serverDate.split("-").map(Number);
+  const minObj = new Date(y, m - 1, d);
+  if (prevDays > 0) minObj.setDate(minObj.getDate() - prevDays);
+
+  // Enabled unless we positively confirmed a limited user AND the setting is off.
+  const enabled = isAdmin || dateEnable === 1 || !settingsRead;
+
+  return {
+    serverDate,
+    minDate: ymd(minObj),
+    maxDate: serverDate,
+    enabled,
+  };
+};
+
 const scalar = async (request, proc) => {
   const r = await request.execute(proc);
   const row = r.recordset?.[0];
@@ -76,7 +134,10 @@ export const getOptions = async (req, res) => {
         .execute("sp_Item_GetbyItemName"),
     ]);
 
+    const dateConfig = await buildStoreDateConfig(pool, req);
+
     return sendSuccess(res, {
+      dateConfig,
       branches: branches.recordset.map((r) => ({ value: r.BranchCode, label: r.BranchName })),
       costHeads: costHeads.recordset.map((r) => ({ value: r.CostHeadCode, label: r.CostHeadName })),
       departments: departments.recordset.map((r) => ({ value: r.DepartmentCode, label: r.DepartmentName })),
@@ -90,6 +151,11 @@ export const getOptions = async (req, res) => {
         PartNo: r.Partnumber ?? r.PartNo ?? "",
         Stock: toNum(r.Stock),
         StockValue: toNum(r.StockValue),
+        CatalogueNo: r.CatalogueNo ?? r.CatalogNo ?? "",
+        DrawingNo: r.DrawingNo ?? r.DrawingNumber ?? "",
+        PurchaseCost: toNum(r.PurchaseCost),
+        HSNCode: r.HSNCode ?? r.HSNNo ?? r.HSN ?? "",
+        TaxName: r.TaxName ?? "",
       })),
     });
   } catch (err) {
