@@ -5,8 +5,6 @@ export const purchaseOrderValidationRules = [
   body("approvalDate").isISO8601().withMessage("Invalid Approval Date"),
 
   body("cpoCode").isInt({ min: 1 }).withMessage("Purchase Order is reqiure"),
-
-  body("companyCode").isInt({ min: 1 }).withMessage("Company code is reqiure"),
 ];
 
 // ✅ Middleware to check results

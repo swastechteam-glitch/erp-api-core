@@ -27,6 +27,8 @@ const toNum = (v) => {
 //   usage "cotton"           -> cotton suppliers, with GSTNo + MainMobileNo.
 //   usage "all"              -> every active supplier, value/label only.
 export const getSuppliers = async (pool, { usage = "stores" } = {}) => {
+  console.log(usage, 'usage');
+  
   // The flag column that gates the list:
   //   "cotton" -> Cotton=1, "stores" -> Stores=1, "all" -> no flag (every supplier).
   const flagWhere =
