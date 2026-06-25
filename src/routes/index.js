@@ -92,6 +92,7 @@ import materialTypeRouter from "./materialTypeRoutes.js";
 import accountGroupRouter from "./accountGroupRoutes.js";
 import cottonPurchaseOrderRouter from "./cottonPurchaseOrderRoutes.js";
 import cottonPurchaseOrderAmendmentRouter from "./cottonPurchaseOrderAmendmentRoutes.js";
+import cottonPurchaseOrderCancelRouter from "./cottonPurchaseOrderCancelRoutes.js";
 import cottonArrivalRouter from "./cottonArrivalRoutes.js";
 import cottonWeighmentRouter from "./cottonWeighmentRoutes.js";
 import cottonWeighmentApprovalRouter from "./cottonWeighmentApprovalRoutes.js";
@@ -165,6 +166,7 @@ const appRoutes = () => {
   router.use("/account-group", accountGroupRouter);
   router.use("/cotton-purchase-order", cottonPurchaseOrderRouter);
   router.use("/cotton-purchase-order-amendment", cottonPurchaseOrderAmendmentRouter);
+  router.use("/cotton-purchase-order-cancel", cottonPurchaseOrderCancelRouter);
   router.use("/cotton-arrival", cottonArrivalRouter);
   router.use("/cotton-weighment", cottonWeighmentRouter);
   router.use("/cotton-weighment-approval", cottonWeighmentApprovalRouter);
