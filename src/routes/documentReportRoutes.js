@@ -12,6 +12,10 @@ import { cottonMixingRequisitionDocumentReport } from "../controllers/documentRe
 import { cottonMixingRequisitionPrintDetails } from "../controllers/documentReport/cottonMixingRequisitionPrintDetails.js";
 import { cottonBillPassingDocumentReport } from "../controllers/documentReport/cottonBillPassingPrint.js";
 import { cottonBillPassingPrintDetails } from "../controllers/documentReport/cottonBillPassingPrintDetails.js";
+import { cottonQualitySlipDocumentReport } from "../controllers/documentReport/cottonQualitySlipPrint.js";
+import { cottonQualitySlipPrintDetails } from "../controllers/documentReport/cottonQualitySlipPrintDetails.js";
+import { cottonSalesDocumentReport } from "../controllers/documentReport/cottonSalesPrint.js";
+import { cottonSalesPrintDetails } from "../controllers/documentReport/cottonSalesPrintDetails.js";
 import { yarnSalesInvoiceList } from "../controllers/documentReport/yarnSalesInvoice.js";
 import { yarnSalesInvoiceDetails } from "../controllers/documentReport/yarnSalesInvoiceDetails.js";
 import { storePurchaseOrderList } from "../controllers/documentReport/storePurchaseOrder.js";
@@ -44,6 +48,14 @@ router.get('/cotton/mixing-requisition-print/details', authenticate, cottonMixin
 router.get('/cotton/bill-passing-print', authenticate, cottonBillPassingDocumentReport);
 // Single cotton bill passing (PDF) — sp_CottonPayment_BillPassing_Load + sp_CottonQualityTestDetails_GetAll @ArrivalCode.
 router.get('/cotton/bill-passing-print/details', authenticate, cottonBillPassingPrintDetails);
+// Cotton quality test slip list (JSON) — sp_CottonQualityTest_GetAll @CompanyCode, @FYCode.
+router.get('/cotton/quality-slip-print', authenticate, cottonQualitySlipDocumentReport);
+// Single cotton quality test slip (PDF) — sp_CottonQualityTestDetails_GetAll @ArrivalCode.
+router.get('/cotton/quality-slip-print/details', authenticate, cottonQualitySlipPrintDetails);
+// Cotton (RawMaterial) sales print list (JSON) — sp_CottonSales_GetAll @CompanyCode.
+router.get('/cotton/sales-print', authenticate, cottonSalesDocumentReport);
+// Single cotton sales invoice (PDF) — sp_CottonSalesDetails_GetAll @CompanyCode, @CottonSalesCode.
+router.get('/cotton/sales-print/details', authenticate, cottonSalesPrintDetails);
 
 // Yarn sales invoice list (JSON) — web_sp_InvoiceDetails_GetAll.
 router.get('/yarn/sales-invoice', authenticate, yarnSalesInvoiceList);

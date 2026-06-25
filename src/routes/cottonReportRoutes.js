@@ -7,6 +7,7 @@ import { cottonArrivalReport } from "../controllers/report/cotton/cottonArrival.
 import { cottonWeighmentReportHandler } from "../controllers/report/cotton/cottonWeighmentReport.js";
 import { cottonMixingIssueReport } from "../controllers/report/cotton/cottonMixingIssue.js";
 import { cottonStockReportHandler } from "../controllers/report/cotton/cottonStockReport.js";
+import { cottonQualityTestReport } from "../controllers/report/cotton/cottonQualityTest.js";
 
 const router = express.Router();
 
@@ -20,5 +21,7 @@ router.get('/arrival', authenticate, cottonArrivalReport);
 router.get('/weighment', authenticate, cottonWeighmentReportHandler);
 router.get('/mixing-issue', authenticate, cottonMixingIssueReport);
 router.get('/stock', authenticate, cottonStockReportHandler);
+// Quality test listing — ?groupBy=date|supplier|variety
+router.get('/quality-test', authenticate, cottonQualityTestReport);
 
 export default router;
