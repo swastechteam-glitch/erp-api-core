@@ -184,6 +184,10 @@ export const amendCottonPurchaseOrder = async (req, res) => {
 
     const details = Array.isArray(b.details) ? b.details : [];
     for (const d of details) {
+      // Mirror the WinForms guard: only insert a CQT detail row when it has a
+      // real parameter (FromParameter <> 0). Skipping this lets blank/placeholder
+      // rows (CQTParameterCode 0) through and trips the FK on tbl_CQTParameter.
+      if (toNum(d.FromParameter) === 0 || toInt(d.CQTParameterCode) <= 0) continue;
       await new sql.Request(tx)
         .input("CPOCode", sql.Int, cpoCode)
         .input("CQTParameterCode", sql.Int, toInt(d.CQTParameterCode))

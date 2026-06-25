@@ -327,6 +327,8 @@ const saveOrUpdate = async (req, res, isEdit) => {
     for (const d of details) {
       // WinForms inserts rows whose FromParameter <> 0; we also keep rows that
       // only carry a Maximum (ToParameter) so an edited "Maximum" is not lost.
+      // Always require a real parameter code, else the FK on tbl_CQTParameter trips.
+      if (toInt(d.CQTParameterCode) <= 0) continue;
       if (toNum(d.FromParameter) === 0 && toNum(d.ToParameter) === 0) continue;
       await new sql.Request(tx)
         .input("CPOCode", sql.Int, cpoCode)

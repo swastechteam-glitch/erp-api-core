@@ -75,6 +75,7 @@ import transporterRouter from "./transporterRoutes.js";
 import rawMaterialTypeRouter from "./rawMaterialTypeRoutes.js";
 import rawMaterialRouter from "./rawMaterialRoutes.js";
 import cottonCountRouter from "./cottonCountRoutes.js";
+import countGroupRouter from "./countGroupRoutes.js";
 import cottonPackingMaterialRouter from "./cottonPackingMaterialRoutes.js";
 import stationRouter from "./stationRoutes.js";
 import cqtParameterRouter from "./cqtParameterRoutes.js";
@@ -154,6 +155,7 @@ const appRoutes = () => {
   router.use("/raw-material-type", rawMaterialTypeRouter);
   router.use("/raw-material", rawMaterialRouter);
   router.use("/cotton-count", cottonCountRouter);
+  router.use("/count-group", countGroupRouter);
   router.use("/cotton-packing-material", cottonPackingMaterialRouter);
   router.use("/station", stationRouter);
   router.use("/cqt-parameter", cqtParameterRouter);
