@@ -9,6 +9,7 @@ import {
   getPackingTypes,
   getQualitySTDs,
   getStationsByState as getStations,
+  getStations as getAllStations,
   PAYMENT_TYPES,
   PAYMENT_MODES,
 } from "../utils/masters.js";
@@ -448,7 +449,7 @@ export const getCottonPurchaseOrderOptions = async (req, res) => {
 
     const pool = await getPool(req.headers.subdbname);
 
-    const [suppliers, agents, states, varieties, packingTypes, qualitySTDs] =
+    const [suppliers, agents, states, varieties, packingTypes, qualitySTDs, stations] =
       await Promise.all([
         getSuppliers(pool, { usage: "cotton" }),
         getAgents(pool, { usage: "cotton" }),
@@ -456,6 +457,7 @@ export const getCottonPurchaseOrderOptions = async (req, res) => {
         getRawMaterials(pool),
         getPackingTypes(pool),
         getQualitySTDs(pool, { usage: "cotton" }),
+        getAllStations(pool), // full station list for the report Station filter
       ]);
 
     return sendSuccess(res, {
@@ -465,6 +467,7 @@ export const getCottonPurchaseOrderOptions = async (req, res) => {
       varieties,
       packingTypes,
       qualitySTDs,
+      stations,
       // WinForms combo indexes (sent as PaymentType / PayMode).
       paymentTypes: PAYMENT_TYPES,
       paymentModes: PAYMENT_MODES,

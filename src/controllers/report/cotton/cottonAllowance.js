@@ -1,10 +1,15 @@
-// Cotton Arrival report — one controller, 4 grouping modes:
-//   ?groupBy=date     (default) — grouped by ArrivalDate
-//   ?groupBy=supplier            — grouped by SupplierName
-//   ?groupBy=variety             — grouped by RawMaterialName  (a.k.a. Item Wise)
-//   ?groupBy=agent               — grouped by AgentName
+// Cotton Allowance report — one controller, 5 grouping modes:
+//   ?groupBy=date         (default) — grouped by CottonAllowanceDate
+//   ?groupBy=supplier                — grouped by SupplierName
+//   ?groupBy=agent                   — grouped by AgentName
+//   ?groupBy=rawmaterial             — grouped by RawMaterialName (Raw Material Wise)
+//   ?groupBy=milllot                 — grouped by MillLotNo
 //
-// SP: sp_CottonArrival_GetAll (CompanyCode, FromDate, ToDate)
+// Optional in-memory filters (comma-separated code lists, mirrors the WinForms
+// rptCottonAllowanceDetails screen which filters the fetched rows by code):
+//   ?supplierCodes=1,2  &agentCodes=3,4  &rawMaterialCodes=5,6
+//
+// SP: sp_CottonAllowance_GetAll (CompanyCode, FromDate, ToDate)
 
 import {
   runReport, buildPage, buildGroupSummaryPage, tableLayout, colors,
@@ -13,56 +18,47 @@ import {
 
 const GROUP_CONFIGS = {
   date: {
-    title: 'COTTON ARRIVAL - DATE WISE',
-    fileName: 'CottonArrival_DateWise',
+    title: 'COTTON ALLOWANCE - DATE WISE',
+    fileName: 'CottonAllowance_DateWise',
     summaryGroupHeader: 'Date',
-    summaryLabel: (g) => ddmmyyyy(g[0].ArrivalDate),
+    summaryLabel: (g) => ddmmyyyy(g[0].CottonAllowanceDate),
     groupKey: (r) => {
-      const d = new Date(r.ArrivalDate);
+      const d = new Date(r.CottonAllowanceDate);
       return isNaN(d.getTime()) ? '0000-00-00' : d.toISOString().slice(0, 10);
     },
-    groupLabel: (g) => 'Date : ' + ddmmyyyy(g[0].ArrivalDate),
+    groupLabel: (g) => 'Date : ' + ddmmyyyy(g[0].CottonAllowanceDate),
     sortFn: (a, b) => a[0].localeCompare(b[0])
   },
   supplier: {
-    title: 'COTTON ARRIVAL - SUPPLIER WISE',
-    fileName: 'CottonArrival_SupplierWise',
+    title: 'COTTON ALLOWANCE - SUPPLIER WISE',
+    fileName: 'CottonAllowance_SupplierWise',
     summaryGroupHeader: 'Supplier Name',
     summaryLabel: (g) => str(g[0], 'SupplierName'),
     groupKey: (r) => str(r, 'SupplierName') || '(Unknown Supplier)',
     groupLabel: (g) => 'Supplier : ' + str(g[0], 'SupplierName'),
     sortFn: (a, b) => a[0].localeCompare(b[0])
   },
-  variety: {
-    title: 'COTTON ARRIVAL - VARIETY WISE',
-    fileName: 'CottonArrival_VarietyWise',
-    summaryGroupHeader: 'Variety',
-    summaryLabel: (g) => str(g[0], 'RawMaterialName'),
-    groupKey: (r) => str(r, 'RawMaterialName') || '(Unknown Variety)',
-    groupLabel: (g) => 'Variety : ' + str(g[0], 'RawMaterialName'),
-    sortFn: (a, b) => a[0].localeCompare(b[0])
-  },
   agent: {
-    title: 'COTTON ARRIVAL - AGENT WISE',
-    fileName: 'CottonArrival_AgentWise',
+    title: 'COTTON ALLOWANCE - AGENT WISE',
+    fileName: 'CottonAllowance_AgentWise',
     summaryGroupHeader: 'Agent Name',
     summaryLabel: (g) => str(g[0], 'AgentName'),
     groupKey: (r) => str(r, 'AgentName') || '(Unknown Agent)',
     groupLabel: (g) => 'Agent : ' + str(g[0], 'AgentName'),
     sortFn: (a, b) => a[0].localeCompare(b[0])
   },
-  station: {
-    title: 'COTTON ARRIVAL - STATION WISE',
-    fileName: 'CottonArrival_StationWise',
-    summaryGroupHeader: 'Station',
-    summaryLabel: (g) => str(g[0], 'StationName'),
-    groupKey: (r) => str(r, 'StationName') || '(Unknown Station)',
-    groupLabel: (g) => 'Station : ' + str(g[0], 'StationName'),
+  rawmaterial: {
+    title: 'COTTON ALLOWANCE - RAW MATERIAL WISE',
+    fileName: 'CottonAllowance_RawMaterialWise',
+    summaryGroupHeader: 'Raw Material',
+    summaryLabel: (g) => str(g[0], 'RawMaterialName'),
+    groupKey: (r) => str(r, 'RawMaterialName') || '(Unknown Raw Material)',
+    groupLabel: (g) => 'Raw Material : ' + str(g[0], 'RawMaterialName'),
     sortFn: (a, b) => a[0].localeCompare(b[0])
   },
   milllot: {
-    title: 'COTTON ARRIVAL - MILL LOT NO WISE',
-    fileName: 'CottonArrival_MillLotWise',
+    title: 'COTTON ALLOWANCE - MILL LOT NO WISE',
+    fileName: 'CottonAllowance_MillLotWise',
     summaryGroupHeader: 'Mill Lot No',
     summaryLabel: (g) => str(g[0], 'MillLotNo'),
     groupKey: (r) => str(r, 'MillLotNo') || '(Unknown Lot)',
@@ -71,24 +67,40 @@ const GROUP_CONFIGS = {
   }
 };
 
-// 15 columns: S.No, Mill Lot No, Arrival Date, CPO No, Supplier, Agent, Station,
-//             Variety, Bales, Rate/Candy, Gross Wt, Tare Wt, Net Wt, LRNo, Transporter
-const WIDTHS = [22, 40, 48, 35, '*', '*', '*', '*', 34, 42, 48, 44, 48, 42, '*'];
+// 14 columns: S.No, Allow No, Allow Date, Mill Lot No, Supplier, Agent,
+//             Station, Variety, Qty, Rate, Candy Rate, Allo Kgs, CN No, CN Amount
+const WIDTHS = [20, 34, 46, 42, '*', '*', '*', '*', 34, 42, 46, 40, 44, 52];
 const HEADERS = [
-  'S.No', 'Mill Lot No', 'Arrival Date', 'CPO No', 'Supplier Name', 'Agent Name',
-  'Station', 'Variety', 'Bales', 'Rate/Candy', 'Gross Wt', 'Tare Wt', 'Net Wt',
-  'LR No', 'Transporter'
+  'S.No', 'Allow No', 'Allow Date', 'Mill Lot No', 'Supplier Name', 'Agent Name',
+  'Station', 'Variety', 'Qty', 'Rate', 'Candy Rate', 'Allo Kgs', 'CN No', 'CN Amount'
 ];
 const CHARS_PER_LINE = {
-  millLot: 12, supplier: 14, agent: 14, station: 14, variety: 14, lrNo: 12, transporter: 14
+  millLot: 11, supplier: 16, agent: 16, station: 14, variety: 14, cnNo: 12
+};
+
+// Parse a comma-separated code list query param into a Set of strings (or null).
+const codeSet = (query, key) => {
+  const raw = String(query[key] || '').trim();
+  if (!raw) return null;
+  const s = new Set(raw.split(',').map((x) => x.trim()).filter(Boolean));
+  return s.size ? s : null;
 };
 
 function buildDocDefinition({ rows, companyName, companyLogo, fromDate, toDate, query }) {
   const groupBy = (query.groupBy || 'date').toLowerCase();
   const cfg = GROUP_CONFIGS[groupBy] || GROUP_CONFIGS.date;
 
+  // ---- in-memory filters (mirror the WinForms code-list filtering) ----
+  const supSet = codeSet(query, 'supplierCodes');
+  const agSet = codeSet(query, 'agentCodes');
+  const rmSet = codeSet(query, 'rawMaterialCodes');
+  let data = rows;
+  if (supSet) data = data.filter((r) => supSet.has(String(r.SupplierCode)));
+  if (agSet) data = data.filter((r) => agSet.has(String(r.AgentCode)));
+  if (rmSet) data = data.filter((r) => rmSet.has(String(r.RawMaterialCode)));
+
   const groupsMap = new Map();
-  for (const r of rows) {
+  for (const r of data) {
     const k = cfg.groupKey(r);
     if (!groupsMap.has(k)) groupsMap.set(k, []);
     groupsMap.get(k).push(r);
@@ -101,21 +113,20 @@ function buildDocDefinition({ rows, companyName, companyLogo, fromDate, toDate, 
     alignment: 'center', fontSize: 8
   })));
 
-  let gBales = 0, gGross = 0, gTare = 0, gNet = 0;
+  let gQty = 0, gAllo = 0, gCn = 0;
   let sno = 1;
   const groupSummaries = [];
 
   for (const [, group] of sortedEntries) {
-    // Group header row spanning all 15 cols
     body.push([
       {
-        text: cfg.groupLabel(group), colSpan: 15, bold: true,
+        text: cfg.groupLabel(group), colSpan: 14, bold: true,
         color: colors.groupText, fillColor: colors.groupFill, fontSize: 9, margin: [2, 2, 0, 2]
       },
-      {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
+      {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
     ]);
 
-    let sBales = 0, sGross = 0, sTare = 0, sNet = 0;
+    let sQty = 0, sAllo = 0, sCn = 0;
     let rowIdx = 0;
 
     for (const r of group) {
@@ -126,8 +137,7 @@ function buildDocDefinition({ rows, companyName, companyLogo, fromDate, toDate, 
       const agent = str(r, 'AgentName');
       const station = str(r, 'StationName');
       const variety = str(r, 'RawMaterialName');
-      const lrNo = str(r, 'LRNo');
-      const transporter = str(r, 'TransporterName');
+      const cnNo = str(r, 'CreditNoteNo');
 
       const lines = {
         millLot: estimateLines(millLot, CHARS_PER_LINE.millLot),
@@ -135,8 +145,7 @@ function buildDocDefinition({ rows, companyName, companyLogo, fromDate, toDate, 
         agent: estimateLines(agent, CHARS_PER_LINE.agent),
         station: estimateLines(station, CHARS_PER_LINE.station),
         variety: estimateLines(variety, CHARS_PER_LINE.variety),
-        lrNo: estimateLines(lrNo, CHARS_PER_LINE.lrNo),
-        transporter: estimateLines(transporter, CHARS_PER_LINE.transporter)
+        cnNo: estimateLines(cnNo, CHARS_PER_LINE.cnNo)
       };
       const maxLines = Math.max(1, ...Object.values(lines));
 
@@ -145,85 +154,74 @@ function buildDocDefinition({ rows, companyName, companyLogo, fromDate, toDate, 
         margin: [0, topPadFor(maxLines, cellLines), 0, 0]
       });
 
-      const bales = dec(r, 'Qty');
-      const gross = dec(r, 'PartyGrossWeight');
-      const tare = dec(r, 'PartyTareWeight');
-      const net = dec(r, 'PartyNetWeight');
-      sBales += bales;
-      sGross += gross;
-      sTare += tare;
-      sNet += net;
+      const qty = dec(r, 'Qty');
+      const allo = dec(r, 'AllowanceKgs');
+      const cnAmt = dec(r, 'CreditNoteAmount');
+      sQty += qty; sAllo += allo; sCn += cnAmt;
 
       body.push([
         cell(String(sno), 'center'),
+        cell(String(r.CottonAllowanceNo ?? ''), 'center'),
+        cell(ddmmyyyy(r.CottonAllowanceDate), 'center'),
         cell(millLot, 'center', lines.millLot),
-        cell(ddmmyyyy(r.ArrivalDate), 'center'),
-        cell(String(r.CPONo ?? ''), 'center'),
         cell(supplier, 'left', lines.supplier),
         cell(agent, 'left', lines.agent),
         cell(station, 'left', lines.station),
         cell(variety, 'left', lines.variety),
-        cell(fmt(bales, 0), 'right'),
+        cell(fmt(qty, 0), 'right'),
+        cell(fmt(dec(r, 'Rate'), 2), 'right'),
         cell(fmt(dec(r, 'CandyRate'), 0), 'right'),
-        cell(fmt(gross, 2), 'right'),
-        cell(fmt(tare, 2), 'right'),
-        cell(fmt(net, 2), 'right'),
-        cell(lrNo, 'center', lines.lrNo),
-        cell(transporter, 'left', lines.transporter)
+        cell(fmt(allo, 2), 'right'),
+        cell(cnNo, 'center', lines.cnNo),
+        cell(fmt(cnAmt, 2), 'right')
       ]);
       sno++;
       rowIdx++;
     }
 
-    // Group sub-total — sums Bales / Gross / Tare / Net
+    // Group sub-total — Qty / Allo Kgs / CN Amount
     const subCellStyle = { bold: true, color: colors.subText, fillColor: colors.subFill, fontSize: 8 };
     body.push([
       { text: 'Sub Total', colSpan: 8, alignment: 'right', ...subCellStyle },
       {}, {}, {}, {}, {}, {}, {},
-      { text: fmt(sBales, 0), alignment: 'right', ...subCellStyle },
+      { text: fmt(sQty, 0), alignment: 'right', ...subCellStyle },
       { text: '', fillColor: colors.subFill },
-      { text: fmt(sGross, 2), alignment: 'right', ...subCellStyle },
-      { text: fmt(sTare, 2), alignment: 'right', ...subCellStyle },
-      { text: fmt(sNet, 2), alignment: 'right', ...subCellStyle },
       { text: '', fillColor: colors.subFill },
-      { text: '', fillColor: colors.subFill }
+      { text: fmt(sAllo, 2), alignment: 'right', ...subCellStyle },
+      { text: '', fillColor: colors.subFill },
+      { text: fmt(sCn, 2), alignment: 'right', ...subCellStyle }
     ]);
 
     groupSummaries.push({
       label: cfg.summaryLabel(group),
-      totals: { bales: sBales, gross: sGross, tare: sTare, net: sNet }
+      totals: { qty: sQty, allo: sAllo, cn: sCn }
     });
 
-    gBales += sBales;
-    gGross += sGross;
-    gTare += sTare;
-    gNet += sNet;
+    gQty += sQty; gAllo += sAllo; gCn += sCn;
   }
 
   const grandCellStyle = { bold: true, color: colors.grandText, fillColor: colors.grandFill, fontSize: 9 };
   body.push([
     { text: 'Grand Total', colSpan: 8, alignment: 'right', ...grandCellStyle },
     {}, {}, {}, {}, {}, {}, {},
-    { text: fmt(gBales, 0), alignment: 'right', ...grandCellStyle },
+    { text: fmt(gQty, 0), alignment: 'right', ...grandCellStyle },
     { text: '', fillColor: colors.grandFill },
-    { text: fmt(gGross, 2), alignment: 'right', ...grandCellStyle },
-    { text: fmt(gTare, 2), alignment: 'right', ...grandCellStyle },
-    { text: fmt(gNet, 2), alignment: 'right', ...grandCellStyle },
     { text: '', fillColor: colors.grandFill },
-    { text: '', fillColor: colors.grandFill }
+    { text: fmt(gAllo, 2), alignment: 'right', ...grandCellStyle },
+    { text: '', fillColor: colors.grandFill },
+    { text: fmt(gCn, 2), alignment: 'right', ...grandCellStyle }
   ]);
 
   const summary = buildGroupSummaryPage({
     companyName, companyLogo, fromDate, toDate,
-    title: cfg.title.replace(/COTTON ARRIVAL/i, 'COTTON ARRIVAL SUMMARY'),
+    title: cfg.title.replace(/COTTON ALLOWANCE/i, 'COTTON ALLOWANCE SUMMARY'),
     groupHeader: cfg.summaryGroupHeader,
     groupSummaries,
-    grandTotals: { bales: gBales, gross: gGross, tare: gTare, net: gNet },
+    grandTotals: { qty: gQty, allo: gAllo, cn: gCn },
     totalCols: [
-      { header: 'Bales', key: 'bales', digits: 0 },
-      { header: 'Gross Wt', key: 'gross', digits: 2 },
-      { header: 'Tare Wt', key: 'tare', digits: 2 },
-      { header: 'Net Wt', key: 'net', digits: 2 }
+      { header: 'Qty', key: 'qty', digits: 0 },
+      { header: 'Allo Kgs', key: 'allo', digits: 2 },
+      { header: 'CN Amount', key: 'cn', digits: 2 }
     ]
   });
 
@@ -241,11 +239,11 @@ function buildDocDefinition({ rows, companyName, companyLogo, fromDate, toDate, 
   });
 }
 
-export const cottonArrivalReport = (req, res) => {
+export const cottonAllowanceReport = (req, res) => {
   const groupBy = (req.query.groupBy || 'date').toLowerCase();
   const cfg = GROUP_CONFIGS[groupBy] || GROUP_CONFIGS.date;
   return runReport(req, res, {
-    spName: 'sp_CottonArrival_GetAll',
+    spName: 'sp_CottonAllowance_GetAll',
     fileName: cfg.fileName,
     buildDocDefinition
   });

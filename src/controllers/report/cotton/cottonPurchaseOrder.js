@@ -1,8 +1,9 @@
-// Cotton Purchase Order report — one controller, 4 grouping modes:
+// Cotton Purchase Order report — one controller, 5 grouping modes:
 //   ?groupBy=date     (default) — grouped by PO date
 //   ?groupBy=supplier            — grouped by SupplierName
 //   ?groupBy=variety             — grouped by RawMaterialName  (a.k.a. Item)
 //   ?groupBy=agent               — grouped by AgentName
+//   ?groupBy=station             — grouped by StationName
 //
 // SP: sp_CottonPurchaseOrder_GetAll (CompanyCode, FromDate, ToDate)
 
@@ -51,6 +52,15 @@ const GROUP_CONFIGS = {
     summaryLabel: (g) => str(g[0], 'AgentName'),
     groupKey: (r) => str(r, 'AgentName') || '(Unknown Agent)',
     groupLabel: (g) => 'Agent : ' + str(g[0], 'AgentName'),
+    sortFn: (a, b) => a[0].localeCompare(b[0])
+  },
+  station: {
+    title: 'COTTON PURCHASE ORDER - STATION WISE',
+    fileName: 'CottonPurchaseOrder_StationWise',
+    summaryGroupHeader: 'Station',
+    summaryLabel: (g) => str(g[0], 'StationName'),
+    groupKey: (r) => str(r, 'StationName') || '(Unknown Station)',
+    groupLabel: (g) => 'Station : ' + str(g[0], 'StationName'),
     sortFn: (a, b) => a[0].localeCompare(b[0])
   }
 };
