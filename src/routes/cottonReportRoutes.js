@@ -15,6 +15,9 @@ import { cottonLotApprovalReport } from "../controllers/report/cotton/cottonLotA
 import { cottonQualityApprovalPendingReport } from "../controllers/report/cotton/cottonQualityApprovalPending.js";
 import { cottonRejectReport } from "../controllers/report/cotton/cottonReject.js";
 import { cottonLotWiseReport } from "../controllers/report/cotton/cottonLotWise.js";
+import { cottonBillPassingReport } from "../controllers/report/cotton/cottonBillPassing.js";
+import { cottonSalesReport } from "../controllers/report/cotton/cottonSales.js";
+import { cottonFormIVReport } from "../controllers/report/cotton/cottonFormIV.js";
 
 const router = express.Router();
 
@@ -51,5 +54,14 @@ router.get('/reject', authenticate, cottonRejectReport);
 // Lot Wise (stock card) — no date range; CompanyCode (+ optional fromLot / toLot
 // ArrivalCode range, 0 = all). One stock card per arrived lot.
 router.get('/lot-wise', authenticate, cottonLotWiseReport);
+// Bill Passing — date range; CompanyCode. ?groupBy=date|supplier (+ optional
+// supplierCodes / paymentCodes / arrivalCodes filter lists). Totals Payment Amount.
+router.get('/bill-passing', authenticate, cottonBillPassingReport);
+// Sales — date range; CompanyCode. ?groupBy=date|customer|agent|variety|milllot|invoice
+// (+ optional customerCodes / agentCodes / rawMaterialCodes / arrivalCodes / salesCodes).
+router.get('/sales', authenticate, cottonSalesReport);
+// Form IV — daily stock register; date range; CompanyCode. ?groupBy=bales|kgs
+// (+ optional rawMaterialTypeCodes filter list).
+router.get('/form-iv', authenticate, cottonFormIVReport);
 
 export default router;

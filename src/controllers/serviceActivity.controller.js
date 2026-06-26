@@ -22,6 +22,34 @@ const toBit = (v) => {
   return 0;
 };
 
+// Business rule: the SAME Service Activity name may exist in both Mechanical
+// and Electrical, but NOT twice within one type. The DB ships with a UNIQUE
+// rule (UK_tbl_ServiceActivity) on the name alone, which wrongly blocks the
+// cross-type case. We drop that DB rule once per client DB (idempotent; any
+// failure such as missing ALTER permission is ignored) and instead enforce
+// per-(ServiceType, Name) uniqueness in the controller below, so the same name
+// is allowed across types but a within-type duplicate is rejected with a clear
+// "Already Exists Service Activity Name" message.
+const legacyUniqueDropped = new Set();
+async function dropLegacyNameUniqueRule(pool, subDBName) {
+  if (legacyUniqueDropped.has(subDBName)) return;
+  try {
+    await pool.request().batch(
+      `IF EXISTS (SELECT 1 FROM sys.key_constraints
+                  WHERE name = 'UK_tbl_ServiceActivity'
+                    AND parent_object_id = OBJECT_ID('tbl_ServiceActivity'))
+         ALTER TABLE tbl_ServiceActivity DROP CONSTRAINT UK_tbl_ServiceActivity;
+       IF EXISTS (SELECT 1 FROM sys.indexes
+                  WHERE name = 'UK_tbl_ServiceActivity'
+                    AND object_id = OBJECT_ID('tbl_ServiceActivity'))
+         DROP INDEX UK_tbl_ServiceActivity ON tbl_ServiceActivity;`
+    );
+    legacyUniqueDropped.add(subDBName);
+  } catch (e) {
+    console.warn("dropLegacyNameUniqueRule skipped:", e.message);
+  }
+}
+
 // GET /service-activity/lists?serviceType=M&search=
 export const getServiceActivityList = async (req, res) => {
   try {
@@ -189,6 +217,26 @@ const saveOrUpdate = async (req, res, isEdit) => {
       return sendError(res, "Invalid ServiceActivityCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+    // Remove the legacy DB rule that made the name globally unique (so the same
+    // name is allowed across Mechanical/Electrical). Best-effort.
+    await dropLegacyNameUniqueRule(pool, req.headers.subdbname);
+
+    // Per-type uniqueness: reject a name that already exists for THIS service
+    // type (excluding the row being edited). Allowed across types.
+    const dupReq = pool
+      .request()
+      .input("ServiceType", sql.NVarChar, serviceType)
+      .input("ServiceActivityName", sql.NVarChar, name);
+    let dupSql =
+      "SELECT COUNT(*) AS cnt FROM tbl_ServiceActivity WHERE ServiceType = @ServiceType AND ServiceActivityName = @ServiceActivityName";
+    if (isEdit) {
+      dupReq.input("ServiceActivityCode", sql.Int, code);
+      dupSql += " AND ServiceActivityCode <> @ServiceActivityCode";
+    }
+    const dupRes = await dupReq.query(dupSql);
+    if ((dupRes.recordset?.[0]?.cnt ?? 0) > 0)
+      return sendError(res, "Already Exists Service Activity Name", 409);
+
     transaction = new sql.Transaction(pool);
     await transaction.begin();
 
@@ -247,7 +295,7 @@ const saveOrUpdate = async (req, res, isEdit) => {
       }
     }
     if (err.message && err.message.includes("UK_tbl_ServiceActivity")) {
-      return sendError(res, "Please Check the Entry", 409);
+      return sendError(res, "Already Exists Service Activity Name", 409);
     }
     console.error("DB Error (saveOrUpdate ServiceActivity):", err);
     return sendError(res, err);
