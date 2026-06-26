@@ -44,6 +44,11 @@ const toNum = (v) => {
   const n = Number(v);
   return Number.isNaN(n) ? 0 : n;
 };
+// A SELECT that lists the same column twice (e.g. MachineName via a duplicated
+// join) makes the mssql driver return that column as an ARRAY of values. Collapse
+// it back to a single string so the client gets "AUTOCONER - 06", not the value
+// repeated. Plain (non-array) values pass through unchanged.
+const oneOf = (v) => (Array.isArray(v) ? (v.find((x) => x != null) ?? "") : v);
 const r2 = (v) => Math.round((toNum(v) + Number.EPSILON) * 100) / 100;
 const r3 = (v) => Math.round((toNum(v) + Number.EPSILON) * 1000) / 1000;
 const getCompanyCode = (req) => toInt(req.headers.companyCode);
@@ -152,7 +157,7 @@ export const getPending = async (req, res) => {
         EmployeeCode: toInt(r.EmployeeCode),
         EmployeeName: r.EmployeeName ?? "",
         MachineCode: toInt(r.MachineCode),
-        MachineName: r.MachineName ?? "",
+        MachineName: oneOf(r.MachineName) ?? "",
         ItemCode: toInt(r.ItemCode),
         ItemName: r.ItemName ?? "",
         ItemID: r.ItemID ?? "",
@@ -245,7 +250,7 @@ export const getById = async (req, res) => {
         DepartmentCode: toInt(r.DepartmentCode),
         DepartmentName: r.DepartmentName ?? "",
         MachineCode: toInt(r.MachineCode),
-        MachineName: r.MachineName ?? "",
+        MachineName: oneOf(r.MachineName) ?? "",
         EmployeeCode: toInt(r.EmployeeCode),
         EmployeeName: r.EmployeeName ?? "",
         ItemCode: toInt(r.ItemCode),
