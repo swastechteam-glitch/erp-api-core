@@ -281,6 +281,57 @@ export const getById = async (req, res) => {
   }
 };
 
+// GET /purchase-order/item-supplier-history/:itemCode
+// "Last 10 Suppliers" — the most recent 10 purchase orders (or inward receipts)
+// for an item. Port of frmItemSupplierHistory.LoadData. Reusable across screens:
+// the caller just passes an ItemCode; the mode (PO-based vs inward-based) is read
+// from tbl_Setting.StorePOLastPurHistory_InwBased so it matches the WinForms app.
+// Returns { inwBased, rows } — rows are RAW (PODate may be "DIRECT" or a date),
+// formatted on the client exactly like the VB grid.
+export const getItemSupplierHistory = async (req, res) => {
+  try {
+    if (!req.headers.subdbname) return sendError(res, "Missing subDBName", 400);
+    const itemCode = toInt(req.params.itemCode);
+    if (!itemCode) return sendError(res, "Invalid ItemCode", 400);
+    const pool = await getPool(req.headers.subdbname);
+
+    // Mode flag (0 = PO based, 1 = inward/received based) — default PO based.
+    const setRes = await pool
+      .request()
+      .input("CompanyCode", sql.Int, getCompanyCode(req))
+      .query(
+        "SELECT TOP 1 ISNULL(StorePOLastPurHistory_InwBased, 0) AS InwBased FROM tbl_Setting WHERE CompanyCode = @CompanyCode",
+      );
+    const inwBased = toInt(setRes.recordset?.[0]?.InwBased) === 1;
+
+    const result = await pool
+      .request()
+      .input("ItemCode", sql.Int, itemCode)
+      .input("InwBased", sql.Bit, inwBased ? 1 : 0)
+      .execute("sp_PurchaseOrder_Top10Supplier_ItemWise");
+    const recs = result.recordset || [];
+
+    const rows = recs.map((r) => ({
+      PONo: (r.PONo ?? "").toString(),
+      PODate: r.PODate ?? null, // raw — "DIRECT" or a date; client formats it
+      SupplierName: r.SupplierName ?? "",
+      ReceivedDate: r.PurchaseOrderReceivedDate ?? null, // only meaningful when inwBased
+      Qty: toNum(r.Qty),
+      Rate: toNum(r.Rate),
+      DiscountPer: toNum(r.DiscountPer),
+      DiscountPerQty: toNum(r.DiscountPerQty),
+      PFPer: toNum(r.PFPer),
+      PFAmount: toNum(r.PFAmount),
+      GSTPer: toNum(r.GSTPer),
+    }));
+
+    return sendSuccess(res, { inwBased, rows });
+  } catch (err) {
+    console.error("DB Error (PurchaseOrder.getItemSupplierHistory):", err);
+    return sendError(res, err);
+  }
+};
+
 // Recompute every per-row amount + the header totals, mirroring the VB math.
 // `supplierLocal` = supplier StateCode === company StateCode (CGST/SGST) else IGST.
 // `taxByCode` maps TaxCode -> tax % (from tbl_Tax). Header carries PFPer / TotalPFAmount
