@@ -104,6 +104,123 @@ export const getOptions = async (req, res) => {
   }
 };
 
+// GET /purchase-order/options-direct
+// Header options (same as getOptions) PLUS the inline master lookups the
+// direct-entry grid needs: items (with UOM / tax / stock), cost heads,
+// departments, machines, employees. Mirrors VB frmPurchaseOrderDirect.Bind_Data.
+export const getOptionsDirect = async (req, res) => {
+  try {
+    if (!req.headers.subdbname) return sendError(res, "Missing subDBName", 400);
+    const companyCode = getCompanyCode(req);
+    const pool = await getPool(req.headers.subdbname);
+
+    const [
+      purchaseModes,
+      purchaseTypes,
+      suppliers,
+      modesOfDespatch,
+      transporters,
+      currencies,
+      taxes,
+      companyStateCode,
+      costHeads,
+      departments,
+      employees,
+      machines,
+      items,
+    ] = await Promise.all([
+      getPurchaseModes(pool),
+      getPurchaseTypes(pool),
+      getSuppliers(pool, { usage: "stores" }),
+      getModesOfDespatch(pool),
+      getTransporters(pool),
+      getCurrencies(pool),
+      getTaxes(pool),
+      getCompanyStateCode(pool, companyCode),
+      pool
+        .request()
+        .query("Select CostHeadName, CostHeadCode from tbl_CostHead Where Status = 1 and CostHeadCode > 0 Order by CostHeadName"),
+      pool
+        .request()
+        .query("Select DepartmentName_English as DepartmentName, DepartmentCode from tbl_Department Where Status = 1 Order by DepartmentName_English"),
+      pool.request().input("CompanyCode", sql.Int, companyCode).execute("sp_Store_Employee_Load"),
+      pool
+        .request()
+        .input("CompanyCode", sql.Int, companyCode)
+        .query("select MachineName, MachineCode, DepartmentCode from tbl_Machine where Status = 1 AND CompanyCode = @CompanyCode Order by MachineName"),
+      pool
+        .request()
+        .input("CompanyCode", sql.Int, companyCode)
+        .input("Stock", sql.Int, 0)
+        .input("Status", sql.Int, 1)
+        .execute("sp_Item_GetbyItemName"),
+    ]);
+
+    return sendSuccess(res, {
+      purchaseModes,
+      purchaseTypes,
+      suppliers,
+      modesOfDespatch,
+      transporters,
+      currencies,
+      taxes,
+      companyStateCode,
+      costHeads: costHeads.recordset.map((r) => ({ value: r.CostHeadCode, label: r.CostHeadName })),
+      departments: departments.recordset.map((r) => ({ value: r.DepartmentCode, label: r.DepartmentName })),
+      employees: employees.recordset.map((r) => ({ value: r.EmployeeCode, label: r.str_EmployeeID ?? r.EmployeeName })),
+      machines: machines.recordset.map((r) => ({
+        value: r.MachineCode,
+        label: r.MachineName,
+        DepartmentCode: toInt(r.DepartmentCode),
+      })),
+      items: items.recordset.map((r) => ({
+        value: r.ItemCode,
+        label: r.ItemName,
+        ItemID: r.ItemID ?? "",
+        PartNo: r.Partnumber ?? r.PartNo ?? "",
+        ItemUomCode: toInt(r.ItemUomCode),
+        ItemUomName: r.ItemUomName ?? r.ItemUOMName ?? "",
+        Stock: toNum(r.Stock),
+        StockValue: toNum(r.StockValue),
+        CatalogueNo: r.CatalogueNo ?? r.CatalogNo ?? "",
+        DrawingNo: r.DrawingNo ?? r.DrawingNumber ?? "",
+        PurchaseCost: toNum(r.PurchaseCost),
+        HSNCode: r.HSNCode ?? r.HSNNo ?? r.HSN ?? "",
+        TaxCode: toInt(r.TaxCode),
+        TaxName: r.TaxName ?? "",
+      })),
+    });
+  } catch (err) {
+    console.error("DB Error (PurchaseOrder.getOptionsDirect):", err);
+    return sendError(res, err);
+  }
+};
+
+// GET /purchase-order/item-last-purchase/:itemCode
+// Last purchase (supplier / date / rate) for an item — the direct grid uses it
+// to auto-fill the rate when an item is picked (VB: vw_ItemHistory lookup).
+export const getItemLastPurchase = async (req, res) => {
+  try {
+    if (!req.headers.subdbname) return sendError(res, "Missing subDBName", 400);
+    const itemCode = toInt(req.params.itemCode);
+    if (itemCode <= 0) return sendSuccess(res, { SupplierName: "", LastPurDate: null, LastPurRate: 0 });
+    const pool = await getPool(req.headers.subdbname);
+    const r = await pool
+      .request()
+      .input("ItemCode", sql.Int, itemCode)
+      .query("SELECT TOP 1 SupplierName, LastPurDate, LastPurRate FROM vw_ItemHistory WHERE ItemCode = @ItemCode");
+    const row = r.recordset?.[0] || {};
+    return sendSuccess(res, {
+      SupplierName: row.SupplierName ?? "",
+      LastPurDate: row.LastPurDate ?? null,
+      LastPurRate: toNum(row.LastPurRate),
+    });
+  } catch (err) {
+    console.error("DB Error (PurchaseOrder.getItemLastPurchase):", err);
+    return sendError(res, err);
+  }
+};
+
 // GET /purchase-order/next-no
 export const getNextNo = async (req, res) => {
   try {
@@ -183,14 +300,15 @@ export const getPending = async (req, res) => {
   }
 };
 
-// GET /purchase-order/lists
+// GET /purchase-order/lists           (requisition-based POs)
+// GET /purchase-order/lists?direct=1   (directly-raised POs — no requisition)
 export const getList = async (req, res) => {
   try {
     if (!req.headers.subdbname) return sendError(res, "Missing subDBName", 400);
     const pool = await getPool(req.headers.subdbname);
     const result = await pool
       .request()
-      .input("Direct", sql.Int, 0)
+      .input("Direct", sql.Int, toInt(req.query.direct) ? 1 : 0)
       .input("CompanyCode", sql.Int, getCompanyCode(req))
       .input("FYCode", sql.Int, getFYCode(req))
       .execute("sp_PurchaseOrder_GetAll");
@@ -484,6 +602,38 @@ const saveOrUpdate = async (req, res, isEdit) => {
     }
 
     const pool = await getPool(req.headers.subdbname);
+
+    // Edit-mode guards (mirror the VB btnSave_Click checks) — block editing an
+    // order that has been rejected, closed, GM-approved, or already inwarded.
+    if (isEdit && code) {
+      const [poRows, inward] = await Promise.all([
+        pool
+          .request()
+          .input("PurchaseOrderCode", sql.Int, code)
+          .query(
+            "Select Approve1, Approve2, RejectReason, PO_Close from vw_PurchaseOrderDetails where PurchaseOrderCode = @PurchaseOrderCode"
+          ),
+        pool
+          .request()
+          .input("PurchaseOrderCode", sql.Int, code)
+          .query(
+            "Select Top 1 PurchaseOrderReceivedCode from vw_PurchaseOrderReceivedDetails where PurchaseOrderCode = @PurchaseOrderCode"
+          ),
+      ]);
+      const poDetail = poRows.recordset || [];
+      if (poDetail.length) {
+        const first = poDetail[0];
+        const rejectReason = (first.RejectReason ?? "").toString().trim();
+        if (toInt(first.Approve1) === 0 && rejectReason !== "" && first.PO_Close != null)
+          return sendError(res, "This Order is Rejected at First Stage, do not Edit", 409);
+        if (poDetail.some((r) => r.PO_Close === true || toInt(r.PO_Close) === 1))
+          return sendError(res, "One or more items in this Order are Closed, do not Edit", 409);
+        if (toInt(first.Approve2) === 1)
+          return sendError(res, "This Order is Already Approved at GM Stage, do not Edit", 409);
+      }
+      if ((inward.recordset || []).length)
+        return sendError(res, "This Order Generate to Inward, do not Edit", 409);
+    }
 
     // Supplier vs company state -> local (CGST/SGST) or other-state (IGST).
     const [supState, compState, taxRows] = await Promise.all([

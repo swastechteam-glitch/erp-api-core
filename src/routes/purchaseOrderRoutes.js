@@ -1,6 +1,8 @@
 import express from "express";
 import {
   getOptions,
+  getOptionsDirect,
+  getItemLastPurchase,
   getNextNo,
   getPending,
   getList,
@@ -16,6 +18,10 @@ const router = express.Router();
 
 // Purchase Order (frmPurchaseOrder / frmPurchaseAdviceDetails)
 router.get("/options", authenticate, getOptions);
+// Purchase Order - Direct (frmPurchaseOrderDirect): one-shot options incl. the
+// inline item / cost-head / department / machine / employee lookups.
+router.get("/options-direct", authenticate, getOptionsDirect);
+router.get("/item-last-purchase/:itemCode", authenticate, getItemLastPurchase);
 router.get("/next-no", authenticate, getNextNo);
 router.get("/pending", authenticate, getPending);
 router.get("/lists", authenticate, getList);
