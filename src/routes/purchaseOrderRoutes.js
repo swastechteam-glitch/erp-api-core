@@ -5,6 +5,7 @@ import {
   getPending,
   getList,
   getById,
+  getItemSupplierHistory,
   create,
   update,
   remove,
@@ -19,6 +20,12 @@ router.get("/next-no", authenticate, getNextNo);
 router.get("/pending", authenticate, getPending);
 router.get("/lists", authenticate, getList);
 router.get("/list/:code", authenticate, getById);
+// "Last 10 Suppliers" history for an item (frmItemSupplierHistory) — reusable.
+router.get(
+  "/item-supplier-history/:itemCode",
+  authenticate,
+  getItemSupplierHistory,
+);
 router.post("/create", authenticate, create);
 router.put("/update/:code", authenticate, update);
 router.delete("/delete/:code", authenticate, remove);
