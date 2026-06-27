@@ -7,7 +7,7 @@
 
 import {
   runMultiReport, buildPage, tableLayout, colors,
-  dec, str, fmt
+  dec, str, fmt, applyRowFiltersToData
 } from '../cotton/_common.js';
 
 const TITLE = 'PRODUCTION UKG REPORT';
@@ -96,8 +96,8 @@ function ukgSection(rows, title, spinning) {
   return section(title, widths, body);
 }
 
-function buildDocDefinition({ data, companyName, companyLogo, fromDate, toDate }) {
-  const d = data || {};
+function buildDocDefinition({ data, companyName, companyLogo, fromDate, toDate, query }) {
+  const d = applyRowFiltersToData(data, query);
   const order = [
     ['carding', 'CARDING', false],
     ['drawing', 'DRAWING', false],

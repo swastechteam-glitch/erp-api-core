@@ -7,7 +7,7 @@
 
 import {
   runReport, buildPage, tableLayout, colors,
-  dec, str, fmt, ddmmyyyy, chartFromRows
+  dec, str, fmt, ddmmyyyy, chartFromRows, applyRowFilters
 } from '../cotton/_common.js';
 
 const TITLE = 'SPG & A/C & PACKING PRODUCTION';
@@ -34,7 +34,8 @@ function groupBy(rows, keyFn) {
   return map;
 }
 
-function buildDocDefinition({ rows, companyName, companyLogo, fromDate, toDate }) {
+function buildDocDefinition({ rows: rawRows, companyName, companyLogo, fromDate, toDate, query }) {
+  const rows = applyRowFilters(rawRows, query);
   const headers = [
     'Date', 'Spg Prodn', 'A/C Prodn', 'Pkg Prodn', 'Bag Prodn',
     'Diff-1 (Spg-A/c)', 'Diff-2 (Spg-Pkg)', 'Diff-3 (Pkg-Bag)',

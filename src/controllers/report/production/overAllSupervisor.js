@@ -6,7 +6,7 @@
 
 import {
   runMultiReport, buildPage, tableLayout, colors,
-  dec, str, fmt
+  dec, str, fmt, applyRowFiltersToData
 } from '../cotton/_common.js';
 
 const TITLE = 'SUPERVISOR EFFICIENCY SUMMARY REPORT';
@@ -79,8 +79,8 @@ const GENERAL = { prod: 'TodayProdnKg', tgt: 'TotTargetProd', eff: 'TodayEff', u
 // spinning / autoconer abstracts use Total*/Toatl* field names.
 const SPG_AC = { prod: 'TotalProdnKg', tgt: 'TotTargetProd', eff: 'ToatlEffi', ut: 'ToatlUT', waste: 'TotalWaste', wper: 'ToatlWastePer' };
 
-function buildDocDefinition({ data, companyName, companyLogo, fromDate, toDate }) {
-  const d = data || {};
+function buildDocDefinition({ data, companyName, companyLogo, fromDate, toDate, query }) {
+  const d = applyRowFiltersToData(data, query);
   const tables = [];
   if ((d.general || []).length) for (const n of supSection(d.general, 'Production', GENERAL)) tables.push(n);
   if ((d.spinning || []).length) for (const n of supSection(d.spinning, 'Spinning', SPG_AC)) tables.push(n);
