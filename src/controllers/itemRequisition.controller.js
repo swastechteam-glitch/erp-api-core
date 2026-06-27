@@ -254,8 +254,29 @@ export const getList = async (req, res) => {
       .input("CompanyCode", sql.Int, getCompanyCode(req))
       .input("RequisitionType", sql.NVarChar, REQ_TYPE)
       .execute("sp_ItemRequisition_GetAll");
+
+    // Locked requisitions (mirrors frmItemRequisition_Details.LoadNonEditableCodes):
+    // a requisition is consumed — and so cannot be edited/deleted — once a PO has
+    // been raised against it OR it was directly inwarded (WithoutPO_Inward = 1).
+    const lockedRes = await pool.request().query(
+      "SELECT DISTINCT ItemRequisitionCode FROM tbl_PurchaseOrderDetails " +
+        "UNION " +
+        "SELECT DISTINCT ItemRequisitionCode FROM vw_ItemRequisitionDetails WHERE WithoutPO_Inward = 1"
+    );
+    const lockedSet = new Set(
+      (lockedRes.recordset || []).map((r) => Number(r.ItemRequisitionCode))
+    );
+
     const data = (result.recordset || [])
-      .map((r) => ({ ...r, id: r.ItemRequisitionCode }))
+      .map((r) => {
+        const IsLocked = lockedSet.has(Number(r.ItemRequisitionCode));
+        return {
+          ...r,
+          id: r.ItemRequisitionCode,
+          IsLocked,
+          Status: IsLocked ? "Processed" : "Pending",
+        };
+      })
       .sort((a, b) => Number(b.ItemRequisitionCode) - Number(a.ItemRequisitionCode));
     return sendPaginated(res, data, req.query);
   } catch (err) {

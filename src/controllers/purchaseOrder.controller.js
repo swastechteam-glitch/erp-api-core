@@ -312,8 +312,53 @@ export const getList = async (req, res) => {
       .input("CompanyCode", sql.Int, getCompanyCode(req))
       .input("FYCode", sql.Int, getFYCode(req))
       .execute("sp_PurchaseOrder_GetAll");
+    // Per-PO stage flags (mirrors frmPurchaseOrderDetails.LoadPOFlags): item-level
+    // PO_Close + header Approve1/Approve2/RejectReason rolled up per order, so the
+    // list can flag each PO as Rejected / Closed / Approved / Pending.
+    const flagRes = await pool
+      .request()
+      .input("CompanyCode", sql.Int, getCompanyCode(req))
+      .input("FYCode", sql.Int, getFYCode(req))
+      .query(
+        "SELECT PurchaseOrderCode, " +
+          "MAX(CASE WHEN Approve1 = 0 AND RejectReason IS NOT NULL AND LTRIM(RTRIM(RejectReason)) <> '' THEN 1 ELSE 0 END) AS IsRejected, " +
+          "MAX(CASE WHEN Approve2 = 1 THEN 1 ELSE 0 END) AS IsApproved, " +
+          "MAX(CASE WHEN PO_Close = 1 THEN 1 ELSE 0 END) AS IsClosed " +
+          "FROM vw_PurchaseOrderDetails " +
+          "WHERE CompanyCode = @CompanyCode AND FYCode = @FYCode " +
+          "GROUP BY PurchaseOrderCode"
+      );
+    const flagMap = new Map(
+      (flagRes.recordset || []).map((f) => [
+        Number(f.PurchaseOrderCode),
+        {
+          IsRejected: toInt(f.IsRejected) === 1,
+          IsApproved: toInt(f.IsApproved) === 1,
+          IsClosed: toInt(f.IsClosed) === 1,
+        },
+      ])
+    );
     const data = (result.recordset || [])
-      .map((r) => ({ ...r, id: r.PurchaseOrderCode }))
+      .map((r) => {
+        const f = flagMap.get(Number(r.PurchaseOrderCode)) || {};
+        // Precedence matches the WinForms grid row-style: Rejected > Closed >
+        // Approved > Pending.
+        const Status = f.IsRejected
+          ? "Rejected"
+          : f.IsClosed
+          ? "Closed"
+          : f.IsApproved
+          ? "Approved"
+          : "Pending";
+        return {
+          ...r,
+          id: r.PurchaseOrderCode,
+          IsRejected: !!f.IsRejected,
+          IsApproved: !!f.IsApproved,
+          IsClosed: !!f.IsClosed,
+          Status,
+        };
+      })
       .sort((a, b) => Number(b.PurchaseOrderCode) - Number(a.PurchaseOrderCode));
     return sendPaginated(res, data, req.query);
   } catch (err) {
@@ -353,6 +398,12 @@ export const getById = async (req, res) => {
       Import: toInt(h.Import) === 1,
       RefNo: (h.RefNo ?? "").toString().trim(),
       Warrenty: (h.Warrenty ?? "").toString().trim(),
+      // Display-only fields the approval document footer needs (already returned
+      // by the SP; codes alone aren't enough). No write/payload impact.
+      ModeOfDespatchName: (h.ModeOfDespatchName ?? "").toString().trim(),
+      TransporterName: (h.TransporterName ?? "").toString().trim(),
+      PurchaseMode: (h.PurchaseMode ?? "").toString().trim(),
+      AdvancePer: toNum(h.AdvancePer),
       SpecialTerms: (h.SpecialTerms ?? "").toString().trim(),
       ChequeNo: (h.ChequeNo ?? "").toString().trim(),
       PFPer: toNum(h.TotalPFPer),
@@ -360,6 +411,17 @@ export const getById = async (req, res) => {
       TotalOtherExpenses: toNum(h.TotalOtherExpenses),
       TotalTCSAmount: toNum(h.TotalTCSAmount),
       Remarks: (h.Remarks ?? "").toString().trim(),
+      // Audit / approval trail (raw columns the SP already returns; the approval
+      // screens render them. Direct ignores these extra fields.)
+      EntryUserName: (h.UName ?? "").toString().trim(),
+      EntryDate: h.C_Date,
+      Approve1_UserName: (h.Approve1_UserName ?? "").toString().trim(),
+      Approve1_Date: h.Approve1_Date,
+      Approve2_UserName: (h.Approve2_UserName ?? "").toString().trim(),
+      Approve2_Date: h.Approve2_Date,
+      Approve3_UserName: (h.Approve3_UserName ?? "").toString().trim(),
+      Approve3_Date: h.Approve3_Date,
+      RejectReason: (h.RejectReason ?? "").toString().trim(),
       details: recs.map((r) => ({
         ItemRequisitionCode: toInt(r.ItemRequisitionCode),
         ItemRequisitionNo: r.ItemRequisitionNo ?? "",
