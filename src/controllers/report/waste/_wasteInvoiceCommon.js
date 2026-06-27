@@ -30,8 +30,11 @@ export function aggregateInvoices(rows) {
     out.push({
       WasteInvoiceDate: f.WasteInvoiceDate,
       InvoiceNo: str(f, 'WasteInvoiceNostr') || str(f, 'WasteInvoiceNo'),
+      InvoiceNoNum: dec(f, 'WasteInvoiceNo'),
       CustomerCode: dec(f, 'CustomerCode'),
       CustomerName: str(f, 'CustomerName'),
+      AgentCode: dec(f, 'AgentCode'),
+      AgentName: str(f, 'AgentName'),
       Qty: dec(f, 'TotalQty'),
       FirstWeight: dec(f, 'TotalFirstWeight'),
       SecondWeight: dec(f, 'TotalSecondWeight'),
@@ -43,7 +46,9 @@ export function aggregateInvoices(rows) {
       IGST: sum('IGST'),
       TCS: dec(f, 'TCSAmount'),
       RoundOff: dec(f, 'RoundedOff'),
-      NetAmount: dec(f, 'NetAmount')
+      NetAmount: dec(f, 'NetAmount'),
+      // raw item-level rows of this invoice (used by the "Detailed" reports).
+      _items: list
     });
   }
   return out;

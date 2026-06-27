@@ -9,6 +9,7 @@ import {
   runReport, buildPage, tableLayout, colors,
   dec, str, fmt, ddmmyyyy
 } from '../cotton/_common.js';
+import { applyWasteFilters } from './_wasteFilters.js';
 
 const TITLE = 'WASTE PRODUCTION - ITEM WISE';
 const FILE_NAME = 'WasteProduction_ItemWise';
@@ -41,7 +42,8 @@ function groupBy(rows, keyFn) {
   return map;
 }
 
-function buildDocDefinition({ rows, companyName, companyLogo, fromDate, toDate }) {
+function buildDocDefinition({ rows, companyName, companyLogo, fromDate, toDate, query }) {
+  rows = applyWasteFilters(rows, query);
   const headers = ['S.No', 'Date', 'Bale No', 'Gross Weight', 'Tare Weight', 'Net Weight'];
   const widths = [40, 110, '*', 110, 110, 110];
   const tables = [];

@@ -1,10 +1,10 @@
-// Waste Production — Date Wise.
-// Mirrors rptWasteProductionDateWise.rdlc — one SP
-// (sp_BaleProductionDetails_GetByRefDate) grouped by WasteProductionDate,
-// each date sub-grouped by Waste Item with an item Total + a Date Total,
-// plus a Grand Total at the end.
+// Waste Production — Bale Wise.
+// Mirrors rptWasteProductionBaleNoWise.rdlc — one SP (sp_WasteProduction_GetAll)
+// grouped by WasteProductionDate, each date sub-grouped by Waste Item listing
+// every bale (Bale No, Gross/Tare/Net), an item Total, a Date Total and a final
+// Grand Total. This is the VB "Detailed" report type.
 //
-// SP: sp_BaleProductionDetails_GetByRefDate (CompanyCode, FromDate, ToDate)
+// SP: sp_WasteProduction_GetAll (CompanyCode, FromDate, ToDate)
 
 import {
   runReport, buildPage, tableLayout, colors,
@@ -12,8 +12,8 @@ import {
 } from '../cotton/_common.js';
 import { applyWasteFilters } from './_wasteFilters.js';
 
-const TITLE = 'WASTE PRODUCTION - DATE WISE';
-const FILE_NAME = 'WasteProduction_DateWise';
+const TITLE = 'WASTE PRODUCTION - BALE WISE';
+const FILE_NAME = 'WasteProduction_BaleWise';
 
 const headRow = (headers, fs = 8) =>
   headers.map((h) => ({
@@ -115,9 +115,9 @@ function buildDocDefinition({ rows, companyName, companyLogo, fromDate, toDate, 
   return buildPage({ companyName, companyLogo, title: TITLE, fromDate, toDate, tables });
 }
 
-export const wasteProductionDateWiseReport = (req, res) => {
+export const wasteProductionBaleWiseReport = (req, res) => {
   return runReport(req, res, {
-    spName: 'sp_BaleProductionDetails_GetByRefDate',
+    spName: 'sp_WasteProduction_GetAll',
     fileName: FILE_NAME,
     buildDocDefinition
   });
