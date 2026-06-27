@@ -7,7 +7,7 @@
 
 import {
   runMultiReport, buildPage, titleBlock, tableLayout, colors,
-  dec, str, fmt
+  dec, str, fmt, applyRowFiltersToData
 } from '../cotton/_common.js';
 
 const TITLE = 'PRODUCTION REPORT';
@@ -364,8 +364,8 @@ function spinningStoppageSection(rows) {
   return section('Spinning Loss of Utilisation', widths, body);
 }
 
-function buildDocDefinition({ data, companyName, companyLogo, fromDate, toDate }) {
-  const d = data || {};
+function buildDocDefinition({ data, companyName, companyLogo, fromDate, toDate, query }) {
+  const d = applyRowFiltersToData(data, query);
   const tables = [];
   const add = (nodes) => { for (const n of nodes) tables.push(n); };
 

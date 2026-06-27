@@ -8,7 +8,7 @@
 
 import {
   runMultiReport, buildPage, tableLayout, colors,
-  dec, str, fmt
+  dec, str, fmt, applyRowFiltersToData
 } from '../cotton/_common.js';
 
 const TITLE = 'STOPPAGE ABSTRACT REPORT';
@@ -93,8 +93,8 @@ function stoppageSection(rows, title) {
   return section(title, WIDTHS, body);
 }
 
-function buildDocDefinition({ data, companyName, companyLogo, fromDate, toDate }) {
-  const d = data || {};
+function buildDocDefinition({ data, companyName, companyLogo, fromDate, toDate, query }) {
+  const d = applyRowFiltersToData(data, query);
   const order = [
     ['carding', 'CARDING'],
     ['drawing', 'BREAKER DRAWING'],

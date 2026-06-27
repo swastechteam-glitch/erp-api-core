@@ -95,6 +95,60 @@ export const ddmmyyyy = (d) => {
   return `${dd}/${mm}/${yy}`;
 };
 
+// ----------------------------------------------------------------------------
+// In-memory row filtering — mirrors the WinForms report screens, which fetch the
+// full recordset from the SP and then narrow it with DataTable.Select("X IN (..)")
+// using the left-rail combo selections. The report SPs here still take only
+// CompanyCode/FromDate/ToDate, so we reproduce that client-side filtering on the
+// returned rows. Each filter only applies to recordsets that actually expose the
+// matching column, so a selection (e.g. Machine) leaves unrelated sections
+// (e.g. a count-only abstract) untouched — exactly as the VB code does.
+// ----------------------------------------------------------------------------
+
+// query param -> candidate row columns holding the code it filters on. Count is
+// CountNameCode on most abstracts but CountCode on the UKG summary (matching the
+// VB `.Select("CountCode IN (...)")` while the combo value is a CountNameCode).
+const ROW_FILTER_SPECS = [
+  { param: 'BranchCode', cols: ['BranchCode'] },
+  { param: 'SupervisorCode', cols: ['SupervisorCode'] },
+  { param: 'DepartmentCode', cols: ['DepartmentCode'] },
+  { param: 'MachineCode', cols: ['MachineCode'] },
+  { param: 'CountNameCode', cols: ['CountNameCode', 'CountCode'] },
+  { param: 'StoppageReasonCode', cols: ['StoppageReasonCode'] }
+];
+
+// Parse a "1,2,3" query value into a Set of trimmed string codes (or null when empty).
+function parseCodeSet(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const set = new Set(String(v).split(',').map((s) => s.trim()).filter((s) => s.length));
+  return set.size ? set : null;
+}
+
+// Filter a single recordset by whatever selections are present in `query`.
+export function applyRowFilters(rows, query = {}) {
+  if (!Array.isArray(rows) || rows.length === 0) return rows || [];
+  const sample = rows[0];
+  const active = [];
+  for (const spec of ROW_FILTER_SPECS) {
+    const set = parseCodeSet(query[spec.param]);
+    if (!set) continue;
+    const col = spec.cols.find((c) => Object.prototype.hasOwnProperty.call(sample, c));
+    if (!col) continue; // this recordset has no such column -> selection N/A here
+    active.push({ col, set });
+  }
+  if (!active.length) return rows;
+  return rows.filter((r) => active.every(({ col, set }) => set.has(String(r[col]))));
+}
+
+// Filter every recordset in a runMultiReport `data` map ({ key: rows }).
+export function applyRowFiltersToData(data, query = {}) {
+  const out = {};
+  for (const [key, rows] of Object.entries(data || {})) {
+    out[key] = applyRowFilters(rows, query);
+  }
+  return out;
+}
+
 // Greedy word-wrap line estimator — used to compute per-row vertical centering.
 export const estimateLines = (text, charsPerLine) => {
   if (!text) return 1;
