@@ -161,6 +161,20 @@ const saveOrUpdateDepartment = async (req, res, isEdit) => {
 
     const pool = await getPool(req.headers.subdbname);
 
+    // Reject a duplicate Department name (case-insensitive) before saving.
+    // No sp_Department_GetAll proc exists, so reuse the list SELECT (vw_Department).
+    const existing = await pool
+      .request()
+      .query(`${VW_COLS}`);
+    const target = departmentName.trim().toLowerCase();
+    const isDuplicate = (existing.recordset || []).some(
+      (row) =>
+        String(row.DepartmentName ?? "").trim().toLowerCase() === target &&
+        Number(row.DepartmentCode ?? 0) !== Number(code ?? 0)
+    );
+    if (isDuplicate)
+      return sendError(res, "Department already exists", 409);
+
     // 1) Clear existing man-power detail rows. Optional — not all client DBs
     //    have sp_DepartmentDetails_Delete, so failure here is non-fatal.
     try {

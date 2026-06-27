@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { isDuplicateByGetAll } from "../utils/duplicateCheck.js";
 
 // ---------------------------------------------------------------------------
 // Account Group master (port of the WinForms frmAC_Group)
@@ -112,6 +113,17 @@ const saveOrUpdate = async (req, res, isEdit) => {
       if (existing.IsPrimary === true || existing.IsPrimary === 1)
         return sendError(res, "You can't edit this Group!", 409);
     }
+
+    if (
+      await isDuplicateByGetAll(pool, {
+        proc: "sp_AC_Group_GetAll",
+        nameField: "GroupName",
+        codeField: "GroupCode",
+        name,
+        code: isEdit ? code : null,
+      })
+    )
+      return sendError(res, "Account Group already exists", 409);
 
     const request = pool.request();
     if (isEdit) request.input("GroupCode", sql.Int, code);

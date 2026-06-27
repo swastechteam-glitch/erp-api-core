@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { isDuplicateByGetAll } from "../utils/duplicateCheck.js";
 
 // ---------------------------------------------------------------------------
 // Cotton Quality Test STD master (port of the WinForms frmCottonQualityTestSTD)
@@ -131,6 +132,21 @@ const saveOrUpdateCQTSTD = async (req, res, isEdit) => {
       return sendError(res, "Invalid CQTSTDCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    // Guard against a duplicate CQT STD Name (reuse the FY-scoped GetAll proc the
+    // list handler uses, passing @FYCode only when present — exactly as getList).
+    if (
+      await isDuplicateByGetAll(pool, {
+        proc: "sp_CQTSTD_GetAll",
+        params: fyCode ? [{ name: "FYCode", type: sql.Int, value: fyCode }] : [],
+        nameField: "CQTSTDName",
+        codeField: "CQTSTDCode",
+        name,
+        code: isEdit ? code : null,
+      })
+    )
+      return sendError(res, "Quality Test STD already exists", 409);
+
     const tx = new sql.Transaction(pool);
     await tx.begin();
     try {

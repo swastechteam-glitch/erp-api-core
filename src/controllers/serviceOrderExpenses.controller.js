@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { isDuplicateByGetAll } from "../utils/duplicateCheck.js";
 
 // ---------------------------------------------------------------------------
 // Service Order Expenses master (port of the WinForms frmServiceOrderExpenses)
@@ -106,6 +107,19 @@ const saveOrUpdateServiceOrderExpenses = async (req, res, isEdit) => {
       return sendError(res, "Invalid SOExpensesCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    // Reject a duplicate name BEFORE saving.
+    if (
+      await isDuplicateByGetAll(pool, {
+        proc: "sp_ServiceOrderExpenses_GetAll",
+        nameField: "SOExpensesName",
+        codeField: "SOExpensesCode",
+        name,
+        code: isEdit ? code : null,
+      })
+    )
+      return sendError(res, "Service Order Expenses already exists", 409);
+
     const request = pool.request();
 
     request.input("User", sql.Int, parseInt(userId));

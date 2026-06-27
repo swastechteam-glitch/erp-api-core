@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError } from "../utils/response.js";
+import { isDuplicateByGetAll } from "../utils/duplicateCheck.js";
 
 // ---------------------------------------------------------------------------
 // Type Of Break Downs master (port of frmTypeOfBreakDowns + ...Details).
@@ -89,6 +90,17 @@ const saveOrUpdate = async (req, res, isEdit) => {
       return sendError(res, "Invalid BreakDownMasterCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    if (
+      await isDuplicateByGetAll(pool, {
+        proc: "sp_TypeOfBreakDowns_GetAll",
+        nameField: "BreakDownName",
+        codeField: "BreakDownMasterCode",
+        name,
+        code: isEdit ? code : null,
+      })
+    )
+      return sendError(res, "Type of Breakdown already exists", 409);
 
     // Auto order no = max+1 when not supplied (mirrors the form).
     let orderNo = parseInt(b.BreakDownOrderNo) || 0;

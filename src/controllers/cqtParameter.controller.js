@@ -141,6 +141,28 @@ const saveOrUpdateCQTParameter = async (req, res, isEdit) => {
       return sendError(res, "Invalid CQTParameterCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    // Guard against a duplicate CQT Parameter Name within the same company.
+    // (No sp_CQTParameter_GetAll proc exists, so use a parameterized query that
+    // mirrors the company scoping of the list handler.)
+    {
+      const dupReq = pool.request();
+      dupReq.input("Name", sql.NVarChar, name);
+      let dupQuery =
+        "Select 1 from tbl_CQTParameter where LTRIM(RTRIM(CQTParameterName)) = LTRIM(RTRIM(@Name))";
+      if (companyCode) {
+        dupReq.input("CompanyCode", sql.Int, companyCode);
+        dupQuery += " and CompanyCode = @CompanyCode";
+      }
+      if (isEdit) {
+        dupReq.input("CQTParameterCode", sql.Int, code);
+        dupQuery += " and CQTParameterCode <> @CQTParameterCode";
+      }
+      const dupRes = await dupReq.query(dupQuery);
+      if (dupRes.recordset.length)
+        return sendError(res, "Quality Test Parameter already exists", 409);
+    }
+
     const request = pool.request();
 
     request.input("User", sql.Int, parseInt(userId));

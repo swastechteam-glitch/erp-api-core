@@ -78,7 +78,22 @@ export const getCustomerApproveById = async (req, res) => {
     if (!result.recordset.length)
       return sendError(res, "Customer not found", 404);
 
-    const row = result.recordset[0];
+    let row = result.recordset[0];
+
+    // vw_Customer surfaces display names but omits some raw columns the edit form
+    // needs to prefill (e.g. PanNo, TINNo, CSTNo, CustomerTypeCode). Merge the
+    // base tbl_Customer row over the view so every such field is present.
+    // Best-effort: if the table name differs the view row is returned as-is.
+    try {
+      const base = await pool
+        .request()
+        .input("CustomerCode", sql.Int, code)
+        .query("Select * from tbl_Customer where CustomerCode = @CustomerCode");
+      if (base.recordset.length) row = { ...row, ...base.recordset[0] };
+    } catch (e) {
+      console.warn("getCustomerApproveById: tbl_Customer merge skipped:", e.message);
+    }
+
     return sendSuccess(res, {
       ...row,
       // vw_Customer exposes the column as lowercase `customertypeCode`; expose

@@ -98,6 +98,21 @@ const saveOrUpdateCostHead = async (req, res, isEdit) => {
       return sendError(res, "Invalid CostHeadCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    // Reject a duplicate CostHead name (case-insensitive) before saving.
+    // No sp_CostHead_GetAll proc exists, so reuse the same SELECT the list uses.
+    const existing = await pool
+      .request()
+      .query(`${SELECT_COLS}`);
+    const target = name.trim().toLowerCase();
+    const isDuplicate = (existing.recordset || []).some(
+      (row) =>
+        String(row.CostHeadName ?? "").trim().toLowerCase() === target &&
+        Number(row.CostHeadCode ?? 0) !== Number(code ?? 0)
+    );
+    if (isDuplicate)
+      return sendError(res, "Cost Head already exists", 409);
+
     const request = pool.request();
 
     request.input("User", sql.Int, parseInt(userId));

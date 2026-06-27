@@ -102,6 +102,21 @@ const saveOrUpdateDepartmentGroup = async (req, res, isEdit) => {
       return sendError(res, "Invalid DepartmentGroupCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    // Reject a duplicate DepartmentGroup name (case-insensitive) before saving.
+    // No sp_DepartmentGroup_GetAll proc exists, so reuse the list SELECT.
+    const existing = await pool
+      .request()
+      .query(`${SELECT_COLS}`);
+    const target = name.trim().toLowerCase();
+    const isDuplicate = (existing.recordset || []).some(
+      (row) =>
+        String(row.DepartmentGroupName ?? "").trim().toLowerCase() === target &&
+        Number(row.DepartmentGroupCode ?? 0) !== Number(code ?? 0)
+    );
+    if (isDuplicate)
+      return sendError(res, "Department Group already exists", 409);
+
     const request = pool.request();
 
     request.input("User", sql.Int, parseInt(userId));

@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { isDuplicateByGetAll } from "../utils/duplicateCheck.js";
 
 // ---------------------------------------------------------------------------
 // State master (port of the WinForms frmState)
@@ -78,6 +79,18 @@ const saveOrUpdateState = async (req, res, isEdit) => {
       return sendError(res, "Invalid StateCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    if (
+      await isDuplicateByGetAll(pool, {
+        proc: "sp_State_GetAll",
+        nameField: "StateName",
+        codeField: "StateCode",
+        name: stateName,
+        code,
+      })
+    )
+      return sendError(res, "State already exists", 409);
+
     const request = pool.request();
 
     if (isEdit) request.input("StateCode", sql.Int, code);

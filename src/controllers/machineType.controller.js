@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { isDuplicateByGetAll } from "../utils/duplicateCheck.js";
 
 // ---------------------------------------------------------------------------
 // Machine Type master (port of the WinForms frmMachineType)
@@ -91,6 +92,18 @@ const saveOrUpdateMachineType = async (req, res, isEdit) => {
       return sendError(res, "Invalid MachineTypeCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    if (
+      await isDuplicateByGetAll(pool, {
+        proc: "sp_MachineType_GetAll",
+        nameField: "MachineTypeName",
+        codeField: "MachineTypeCode",
+        name,
+        code: isEdit ? code : null,
+      })
+    )
+      return sendError(res, "Machine Type already exists", 409);
+
     const request = pool.request();
 
     if (isEdit) request.input("MachineTypeCode", sql.Int, code);

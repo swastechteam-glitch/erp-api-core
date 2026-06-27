@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { isDuplicateByGetAll } from "../utils/duplicateCheck.js";
 
 // ---------------------------------------------------------------------------
 // Raw Material master (port of the WinForms frmRawMaterial)
@@ -106,6 +107,19 @@ const saveOrUpdateRawMaterial = async (req, res, isEdit) => {
       return sendError(res, "Invalid RawMaterialCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    // Reject a duplicate name BEFORE saving.
+    if (
+      await isDuplicateByGetAll(pool, {
+        proc: "sp_RawMaterial_GetAll",
+        nameField: "RawMaterialName",
+        codeField: "RawMaterialCode",
+        name,
+        code: isEdit ? code : null,
+      })
+    )
+      return sendError(res, "Raw Material already exists", 409);
+
     const request = pool.request();
 
     request.input("User", sql.Int, parseInt(userId));

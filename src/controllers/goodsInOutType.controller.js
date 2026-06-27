@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { isDuplicateByGetAll } from "../utils/duplicateCheck.js";
 
 // ---------------------------------------------------------------------------
 // Goods In Out Type master (port of the WinForms frmGoodsInOutType)
@@ -107,6 +108,19 @@ const saveOrUpdate = async (req, res, isEdit) => {
       return sendError(res, "Invalid TransGoodsTypeCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    // Guard against a duplicate TransGoodsType Name (reuse the list's GetAll proc).
+    if (
+      await isDuplicateByGetAll(pool, {
+        proc: "sp_GateEntryTransGoodsType_GetAll",
+        nameField: "TransGoodsTypeName",
+        codeField: "TransGoodsTypeCode",
+        name,
+        code: isEdit ? code : null,
+      })
+    )
+      return sendError(res, "Gate Entry Goods In Out Type already exists", 409);
+
     const request = pool.request();
 
     request.input("User", sql.Int, parseInt(userId));

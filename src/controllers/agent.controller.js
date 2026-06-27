@@ -116,6 +116,19 @@ const saveOrUpdateAgent = async (req, res, isEdit) => {
       return sendError(res, "Invalid AgentCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    // Reject a duplicate name BEFORE saving (no DB UNIQUE constraint relied on).
+    const dupReq = pool.request().input("Name", sql.NVarChar, name);
+    let dupQuery =
+      "SELECT 1 from tbl_Agent WHERE LTRIM(RTRIM(AgentName)) = @Name";
+    if (isEdit) {
+      dupReq.input("Code", sql.Int, code);
+      dupQuery += " AND AgentCode <> @Code";
+    }
+    const dup = await dupReq.query(dupQuery);
+    if (dup.recordset.length)
+      return sendError(res, "Agent already exists", 409);
+
     const request = pool.request();
 
     if (isEdit) request.input("AgentCode", sql.Int, code);

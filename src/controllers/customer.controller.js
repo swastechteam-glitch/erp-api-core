@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { isDuplicateByGetAll } from "../utils/duplicateCheck.js";
 import {
   getCompanyGroups,
   getCustomerTypes,
@@ -83,7 +84,22 @@ export const getCustomerById = async (req, res) => {
     if (!result.recordset.length)
       return sendError(res, "Customer not found", 404);
 
-    const row = result.recordset[0];
+    let row = result.recordset[0];
+
+    // vw_Customer surfaces display names but omits some raw code columns the edit
+    // form needs to prefill its dropdowns (e.g. CustomerTypeCode). Merge the base
+    // tbl_Customer row over the view so every *Code field is present. Best-effort:
+    // if the table name differs the view row is still returned as-is.
+    try {
+      const base = await pool
+        .request()
+        .input("CustomerCode", sql.Int, code)
+        .query("Select * from tbl_Customer where CustomerCode = @CustomerCode");
+      if (base.recordset.length) row = { ...row, ...base.recordset[0] };
+    } catch (e) {
+      console.warn("getCustomerById: tbl_Customer merge skipped:", e.message);
+    }
+
     return sendSuccess(res, { ...row, StatusText: STATUS_LABEL(row.Status) });
   } catch (err) {
     console.error("DB Error (getCustomerById):", err);
@@ -145,6 +161,18 @@ const saveOrUpdateCustomer = async (req, res, isEdit) => {
       return sendError(res, "Invalid CustomerCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    // Guard against a duplicate Customer Name (no DB UNIQUE constraint on many DBs).
+    if (
+      await isDuplicateByGetAll(pool, {
+        proc: "sp_Customer_GetAll",
+        nameField: "CustomerName",
+        codeField: "CustomerCode",
+        name,
+        code: isEdit ? code : null,
+      })
+    )
+      return sendError(res, "Customer already exists", 409);
 
     // Block setting an existing customer Inactive while a balance is pending.
     if (isEdit && !status) {

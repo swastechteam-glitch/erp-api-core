@@ -97,6 +97,21 @@ const saveOrUpdateMachineMake = async (req, res, isEdit) => {
       return sendError(res, "Invalid MachineMakeCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    // List uses a direct SELECT (no GetAll proc), so check for a duplicate
+    // name via the same table/columns.
+    const dupRes = await pool
+      .request()
+      .input("Name", sql.NVarChar, name)
+      .input("Code", sql.Int, isEdit ? code : 0)
+      .query(
+        "SELECT 1 from tbl_MachineMake " +
+          "WHERE LOWER(LTRIM(RTRIM(MachineMakeName))) = LOWER(@Name) " +
+          "AND MachineMakeCode <> @Code"
+      );
+    if (dupRes.recordset.length)
+      return sendError(res, "Machine Make already exists", 409);
+
     const request = pool.request();
 
     request.input("User", sql.Int, parseInt(userId));

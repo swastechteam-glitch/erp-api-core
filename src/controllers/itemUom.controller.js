@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { isDuplicateByGetAll } from "../utils/duplicateCheck.js";
 
 // ---------------------------------------------------------------------------
 // Item Uom master (port of the WinForms frmItemUom)
@@ -96,6 +97,18 @@ const saveOrUpdateItemUom = async (req, res, isEdit) => {
       return sendError(res, "Invalid ItemUomCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    if (
+      await isDuplicateByGetAll(pool, {
+        proc: "sp_ItemUom_GetAll",
+        nameField: "ItemUomName",
+        codeField: "ItemUomCode",
+        name,
+        code: isEdit ? code : null,
+      })
+    )
+      return sendError(res, "Item UOM already exists", 409);
+
     const request = pool.request();
 
     request.input("User", sql.Int, parseInt(userId));

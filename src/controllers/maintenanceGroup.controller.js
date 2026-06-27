@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { isDuplicateByGetAll } from "../utils/duplicateCheck.js";
 
 // ---------------------------------------------------------------------------
 // Maintenance Group master (port of the WinForms frmMaintenanceGroup)
@@ -97,6 +98,18 @@ const saveOrUpdateMaintenanceGroup = async (req, res, isEdit) => {
       return sendError(res, "Invalid MaintenanceGroupCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    if (
+      await isDuplicateByGetAll(pool, {
+        proc: "sp_MaintenanceGroup_GetAll",
+        nameField: "MaintenanceGroupName",
+        codeField: "MaintenanceGroupCode",
+        name,
+        code,
+      })
+    )
+      return sendError(res, "Maintenance Group already exists", 409);
+
     const request = pool.request();
 
     if (isEdit) request.input("MaintenanceGroupCode", sql.Int, code);

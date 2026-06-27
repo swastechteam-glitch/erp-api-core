@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { isDuplicateByGetAll } from "../utils/duplicateCheck.js";
 
 // ---------------------------------------------------------------------------
 // Godown master (port of the WinForms frmGodown)
@@ -92,6 +93,18 @@ const saveOrUpdateGodown = async (req, res, isEdit) => {
       return sendError(res, "Invalid GodownCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    if (
+      await isDuplicateByGetAll(pool, {
+        proc: "sp_Godown_GetAll",
+        nameField: "GodownName",
+        codeField: "GodownCode",
+        name,
+        code,
+      })
+    )
+      return sendError(res, "Godown already exists", 409);
+
     const request = pool.request();
 
     request.input("User", sql.Int, parseInt(userId));

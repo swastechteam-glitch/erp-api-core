@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { isDuplicateByGetAll } from "../utils/duplicateCheck.js";
 
 // ---------------------------------------------------------------------------
 // Customer Type master (port of the WinForms frmCustomerType)
@@ -95,6 +96,18 @@ const saveOrUpdateCustomerType = async (req, res, isEdit) => {
       return sendError(res, "Invalid CustomerTypeCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    if (
+      await isDuplicateByGetAll(pool, {
+        proc: "sp_CustomerType_GetAll",
+        nameField: "CustomerType",
+        codeField: "CustomerTypeCode",
+        name,
+        code: isEdit ? code : null,
+      })
+    )
+      return sendError(res, "Customer Type already exists", 409);
+
     const request = pool.request();
 
     request.input("User", sql.Int, parseInt(userId));

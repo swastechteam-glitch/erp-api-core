@@ -291,6 +291,24 @@ const saveOrUpdateItem = async (req, res, isEdit) => {
 
     const pool = await getPool(req.headers.subdbname);
 
+    // Guard against a duplicate Item Name (case-insensitive, trimmed). No usable
+    // plain GetAll proc (the list uses sp_Item_GetbyEdit / search uses a LIKE
+    // proc), so query tbl_Item directly — the same table this controller already
+    // references for the ItemID uniqueness check below.
+    {
+      const nameReq = pool.request();
+      nameReq.input("ItemName", sql.NVarChar, itemName);
+      let nameQuery =
+        "Select 1 from tbl_Item where LTRIM(RTRIM(ItemName)) = LTRIM(RTRIM(@ItemName))";
+      if (isEdit) {
+        nameReq.input("ItemCode", sql.Int, code);
+        nameQuery += " and ItemCode <> @ItemCode";
+      }
+      const nameDup = await nameReq.query(nameQuery);
+      if (nameDup.recordset.length)
+        return sendError(res, "Item already exists", 409);
+    }
+
     // ItemID must be unique across other items.
     const dup = isEdit
       ? await pool
