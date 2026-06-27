@@ -5,8 +5,26 @@
 
 import {
   runReport, buildPage, tableLayout, colors,
-  dec, str, fmt, ddmmyyyy, chartFromRows
+  dec, str, fmt, ddmmyyyy, chartFromRows, sql
 } from '../cotton/_common.js';
+import { getPool } from '../../../config/dynamicDB.js';
+
+// ---- functional filters (port of the WinForms DataTable.Select chain) -------
+const codeSet = (v) => {
+  if (v === undefined || v === null || v === '') return null;
+  const s = new Set(String(v).split(',').map((x) => parseInt(x, 10)).filter((n) => !Number.isNaN(n)));
+  return s.size ? s : null;
+};
+const oneFilter = (rows, field, set) =>
+  (!set || !rows.length || !(field in rows[0])) ? rows : rows.filter((r) => set.has(parseInt(r[field], 10)));
+const filterRows = (rows, query = {}) => {
+  let out = rows || [];
+  out = oneFilter(out, 'BranchCode', codeSet(query.branchCode));
+  out = oneFilter(out, 'DepartmentCode', codeSet(query.departmentCode));
+  out = oneFilter(out, 'MachineCode', codeSet(query.machineCode));
+  out = oneFilter(out, 'ItemCode', codeSet(query.itemCode));
+  return out;
+};
 
 // ---- helpers ---------------------------------------------------------------
 function groupBy(rows, keyFn) {
@@ -94,7 +112,7 @@ const byStr = (a, b) => String(a).localeCompare(String(b));
 export const tapeCutItemWise = (req, res) => runReport(req, res, {
   spName: 'sp_MachineTapeCut_GetAll', fileName: 'MachineTapeCut_ItemWise',
   buildDocDefinition: (ctx) => buildGrouped({
-    ...ctx, title: 'MACHINE TAPE CUT DETAILS - ITEM WISE',
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'MACHINE TAPE CUT DETAILS - ITEM WISE',
     columns: [C.sno, C.date, C.machine, C.dept, C.tapes, C.cost],
     groupKey: (r) => str(r, 'ItemCode') || str(r, 'ItemName'), groupLabel: (r) => str(r, 'ItemName'),
     sortGroups: byStr, chartGroupHeader: 'Item'
@@ -104,7 +122,7 @@ export const tapeCutItemWise = (req, res) => runReport(req, res, {
 export const tapeCutDepartmentWise = (req, res) => runReport(req, res, {
   spName: 'sp_MachineTapeCut_GetAll', fileName: 'MachineTapeCut_DepartmentWise',
   buildDocDefinition: (ctx) => buildGrouped({
-    ...ctx, title: 'MACHINE TAPE CUT DETAILS - DEPARTMENT WISE',
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'MACHINE TAPE CUT DETAILS - DEPARTMENT WISE',
     columns: [C.sno, C.date, C.machine, C.item, C.tapes, C.cost],
     groupKey: (r) => str(r, 'DepartmentCode') || str(r, 'DepartmentName'), groupLabel: (r) => str(r, 'DepartmentName'),
     sortGroups: byStr, chartGroupHeader: 'Department'
@@ -114,7 +132,7 @@ export const tapeCutDepartmentWise = (req, res) => runReport(req, res, {
 export const tapeCutMachineWise = (req, res) => runReport(req, res, {
   spName: 'sp_MachineTapeCut_GetAll', fileName: 'MachineTapeCut_MachineWise',
   buildDocDefinition: (ctx) => buildGrouped({
-    ...ctx, title: 'MACHINE TAPE CUT DETAILS - MACHINE WISE',
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'MACHINE TAPE CUT DETAILS - MACHINE WISE',
     columns: [C.sno, C.date, C.dept, C.item, C.tapes, C.cost],
     groupKey: (r) => str(r, 'MachineCode') || str(r, 'MachineName'), groupLabel: (r) => str(r, 'MachineName'),
     sortGroups: byStr, chartGroupHeader: 'Machine'
@@ -124,10 +142,43 @@ export const tapeCutMachineWise = (req, res) => runReport(req, res, {
 export const tapeCutDateWise = (req, res) => runReport(req, res, {
   spName: 'sp_MachineTapeCut_GetAll', fileName: 'MachineTapeCut_DateWise',
   buildDocDefinition: (ctx) => buildGrouped({
-    ...ctx, title: 'MACHINE TAPE CUT DETAILS - DATE WISE',
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'MACHINE TAPE CUT DETAILS - DATE WISE',
     columns: [C.sno, C.machine, C.dept, C.item, C.tapes, C.cost],
     groupKey: (r) => (r.TapeCutDate ? new Date(r.TapeCutDate).toISOString().slice(0, 10) : ''),
     groupLabel: (r) => ddmmyyyy(r.TapeCutDate),
     sortGroups: (a, b) => new Date(a) - new Date(b), chartGroupHeader: 'Date'
   })
 });
+
+// GET /mechanical/reports/machine-tape-cut/options — filter dropdowns.
+// Item list mirrors the VB (spindle tape / skived apron items).
+export const machineTapeCutOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const companyCode = parseInt(req.query.CompanyCode || req.headers.companycode) || 0;
+    const pool = await getPool(subDbName);
+    const [branches, departments, machines, items] = await Promise.all([
+      pool.request().input('CompanyCode', sql.Int, companyCode)
+        .query('SELECT BranchCode AS value, BranchName AS label FROM tbl_Branch WHERE CompanyCode = @CompanyCode ORDER BY BranchName'),
+      pool.request()
+        .query('SELECT DepartmentCode AS value, DepartmentName AS label FROM tbl_Department ORDER BY DepartmentName'),
+      pool.request().input('CompanyCode', sql.Int, companyCode)
+        .query('SELECT MachineCode AS value, MachineName AS label FROM tbl_Machine WHERE CompanyCode = @CompanyCode AND Status = 1 ORDER BY MachineName'),
+      pool.request()
+        .query("SELECT ItemCode AS value, ItemName AS label FROM tbl_Item WHERE ItemName LIKE '%SKIVED APRON%' OR ItemName LIKE '%SPINDLE TAPE%' ORDER BY ItemName")
+    ]);
+    res.json({
+      success: true,
+      data: {
+        branches: branches.recordset,
+        departments: departments.recordset,
+        machines: machines.recordset,
+        items: items.recordset
+      }
+    });
+  } catch (err) {
+    console.error('Report Error (machineTapeCutOptions):', err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};

@@ -6,8 +6,37 @@
 
 import {
   runReport, buildPage, tableLayout, colors,
-  dec, str, fmt, ddmmyyyy, chartFromRows
+  dec, str, fmt, ddmmyyyy, chartFromRows, sql
 } from '../cotton/_common.js';
+import { getPool } from '../../../config/dynamicDB.js';
+
+// ---- functional filters (port of the WinForms DataTable.Select chain) -------
+const codeSet = (v) => {
+  if (v === undefined || v === null || v === '') return null;
+  const s = new Set(String(v).split(',').map((x) => parseInt(x, 10)).filter((n) => !Number.isNaN(n)));
+  return s.size ? s : null;
+};
+const oneFilter = (rows, field, set) =>
+  (!set || !rows.length || !(field in rows[0])) ? rows : rows.filter((r) => set.has(parseInt(r[field], 10)));
+const filterRows = (rows, query = {}) => {
+  let out = rows || [];
+  out = oneFilter(out, 'BranchCode', codeSet(query.branchCode));
+  out = oneFilter(out, 'DepartmentCode', codeSet(query.departmentCode));
+  out = oneFilter(out, 'MachineCode', codeSet(query.machineCode));
+  out = oneFilter(out, 'DiaCode', codeSet(query.diaCode));
+  return out;
+};
+
+// sp_MaintenanceBuffing_GetAll params; the Pending variant adds @Pending=1.
+const buffingParams = (pending) => (p) => {
+  const out = {
+    CompanyCode: { type: sql.Int, value: parseInt(p.CompanyCode) || 0 },
+    FromDate: { type: sql.DateTime, value: p.FromDate ? new Date(p.FromDate) : null },
+    ToDate: { type: sql.DateTime, value: p.ToDate ? new Date(p.ToDate) : null }
+  };
+  if (pending) out.Pending = { type: sql.Int, value: 1 };
+  return out;
+};
 
 // ---- helpers ---------------------------------------------------------------
 function groupBy(rows, keyFn) {
@@ -75,7 +104,7 @@ const deptDiaLabel = (r) => `${str(r, 'DepartmentName')} - ${str(r, 'DiaName')}`
 export const buffingDetail = (req, res) => runReport(req, res, {
   spName: 'sp_MaintenanceBuffing_GetAll', fileName: 'MaintenanceBuffing',
   buildDocDefinition: (ctx) => buildGrouped({
-    ...ctx, title: 'MAINTENANCE BUFFING',
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'MAINTENANCE BUFFING',
     columns: [C.sno, C.buffingDate, C.machine, C.dia, C.nextDate],
     groupKey: deptDiaKey, groupLabel: deptDiaLabel,
     sortGroups: (a, b) => String(a).localeCompare(String(b)), chartGroupHeader: 'Dept - Dia'
@@ -83,9 +112,9 @@ export const buffingDetail = (req, res) => runReport(req, res, {
 });
 
 export const buffingPending = (req, res) => runReport(req, res, {
-  spName: 'sp_MaintenanceBuffing_GetAll', fileName: 'MaintenanceBuffing_Pending',
+  spName: 'sp_MaintenanceBuffing_GetAll', spParams: buffingParams(true), fileName: 'MaintenanceBuffing_Pending',
   buildDocDefinition: (ctx) => buildGrouped({
-    ...ctx, title: 'MAINTENANCE BUFFING PENDING',
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'MAINTENANCE BUFFING PENDING',
     columns: [C.sno, C.lastDate, C.machine, C.pendingDays, C.pendingDate],
     groupKey: deptDiaKey, groupLabel: deptDiaLabel,
     sortGroups: (a, b) => String(a).localeCompare(String(b)),
@@ -96,10 +125,43 @@ export const buffingPending = (req, res) => runReport(req, res, {
 export const buffingDateWise = (req, res) => runReport(req, res, {
   spName: 'sp_MaintenanceBuffing_GetAll', fileName: 'MaintenanceBuffing_DateWise',
   buildDocDefinition: (ctx) => buildGrouped({
-    ...ctx, title: 'MAINTENANCE BUFFING - DATE WISE',
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'MAINTENANCE BUFFING - DATE WISE',
     columns: [C.sno, C.machine, C.dept, C.dia, C.nextDate],
     groupKey: (r) => (r.BuffingDate ? new Date(r.BuffingDate).toISOString().slice(0, 10) : ''),
     groupLabel: (r) => ddmmyyyy(r.BuffingDate),
     sortGroups: (a, b) => new Date(a) - new Date(b), chartGroupHeader: 'Date'
   })
 });
+
+// GET /mechanical/reports/machine-buffing/options — filter dropdowns
+// (Branch / Department / Machine / Type Of Roll = Dia).
+export const machineBuffingOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const companyCode = parseInt(req.query.CompanyCode || req.headers.companycode) || 0;
+    const pool = await getPool(subDbName);
+    const [branches, departments, machines, dias] = await Promise.all([
+      pool.request().input('CompanyCode', sql.Int, companyCode)
+        .query('SELECT BranchCode AS value, BranchName AS label FROM tbl_Branch WHERE CompanyCode = @CompanyCode ORDER BY BranchName'),
+      pool.request()
+        .query('SELECT DepartmentCode AS value, DepartmentName AS label FROM tbl_Department ORDER BY DepartmentName'),
+      pool.request().input('CompanyCode', sql.Int, companyCode)
+        .query('SELECT MachineCode AS value, MachineName AS label FROM tbl_Machine WHERE CompanyCode = @CompanyCode AND Status = 1 AND MachineTypeCode = 1 ORDER BY MachineName'),
+      pool.request()
+        .query('SELECT DiaCode AS value, DiaName AS label FROM tbl_Dia ORDER BY DiaName')
+    ]);
+    res.json({
+      success: true,
+      data: {
+        branches: branches.recordset,
+        departments: departments.recordset,
+        machines: machines.recordset,
+        dias: dias.recordset
+      }
+    });
+  } catch (err) {
+    console.error('Report Error (machineBuffingOptions):', err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};

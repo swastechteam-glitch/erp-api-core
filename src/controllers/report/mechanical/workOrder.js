@@ -10,8 +10,27 @@
 
 import {
   runReport, buildPage, tableLayout, colors,
-  dec, str, fmt, ddmmyyyy, chartFromRows
+  dec, str, fmt, ddmmyyyy, chartFromRows, sql
 } from '../cotton/_common.js';
+import { getPool } from '../../../config/dynamicDB.js';
+
+// ---- functional filters (port of the WinForms DataTable.Select chain) -------
+const codeSet = (v) => {
+  if (v === undefined || v === null || v === '') return null;
+  const s = new Set(String(v).split(',').map((x) => parseInt(x, 10)).filter((n) => !Number.isNaN(n)));
+  return s.size ? s : null;
+};
+const oneFilter = (rows, field, set) =>
+  (!set || !rows.length || !(field in rows[0])) ? rows : rows.filter((r) => set.has(parseInt(r[field], 10)));
+const filterRows = (rows, query = {}) => {
+  let out = rows || [];
+  out = oneFilter(out, 'BranchCode', codeSet(query.branchCode));
+  out = oneFilter(out, 'DepartmentCode', codeSet(query.departmentCode));
+  out = oneFilter(out, 'MachineCode', codeSet(query.machineCode));
+  out = oneFilter(out, 'ServiceActivityCode', codeSet(query.serviceActivityCode));
+  return out;
+};
+const svcType = (req) => (String(req.query.serviceType || 'M').toUpperCase() === 'E' ? 'E' : 'M');
 
 // ---- helpers ---------------------------------------------------------------
 function groupBy(rows, keyFn) {
@@ -86,8 +105,8 @@ const byWoDate = (a, b) => new Date(a.WorkOrderDate) - new Date(b.WorkOrderDate)
 export const workOrderDateWise = (req, res) => runReport(req, res, {
   spName: 'sp_WorkOrder_GetAll',
   fileName: 'WorkOrder_DateWise',
-  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) => buildGrouped({
-    rows, companyName, companyLogo, fromDate, toDate,
+  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate, query }) => buildGrouped({
+    rows: filterRows(rows, query), companyName, companyLogo, fromDate, toDate,
     title: 'WORK ORDER SCHEDULE COMPLETE - DATE WISE',
     columns: [W.sno, W.woNo, W.machine, W.service, W.lastDone, W.schedDone, W.duration, W.nextService, W.remarks, W.attnBy],
     groupKey: (r) => (r.WorkOrderDate ? new Date(r.WorkOrderDate).toISOString().slice(0, 10) : ''),
@@ -100,8 +119,8 @@ export const workOrderDateWise = (req, res) => runReport(req, res, {
 export const workOrderDepartmentWise = (req, res) => runReport(req, res, {
   spName: 'sp_WorkOrder_GetAll',
   fileName: 'WorkOrder_DepartmentWise',
-  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) => buildGrouped({
-    rows, companyName, companyLogo, fromDate, toDate,
+  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate, query }) => buildGrouped({
+    rows: filterRows(rows, query), companyName, companyLogo, fromDate, toDate,
     title: 'WORK ORDER SCHEDULE COMPLETE - DEPARTMENT WISE',
     columns: [W.sno, W.woNo, W.machine, W.service, W.lastDone, W.woDate, W.duration, W.nextService, W.remarks, W.attnBy],
     groupKey: (r) => str(r, 'DepartmentCode') || str(r, 'DepartmentName'),
@@ -117,8 +136,8 @@ export const workOrderDepartmentWise = (req, res) => runReport(req, res, {
 export const workOrderDetailsMachineWise = (req, res) => runReport(req, res, {
   spName: 'sp_WorkOrderDetails_GetAll',
   fileName: 'WorkOrderDetails_MachineWise',
-  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) => buildGrouped({
-    rows, companyName, companyLogo, fromDate, toDate,
+  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate, query }) => buildGrouped({
+    rows: filterRows(rows, query), companyName, companyLogo, fromDate, toDate,
     title: 'WORK ORDER SCHEDULE COMPLETE - MACHINE WISE',
     columns: [W.sno, W.woNo, W.dept, W.service, W.lastDone, W.woDate, W.duration, W.nextService, W.remarks, W.sign],
     groupKey: (r) => str(r, 'MachineCode') || str(r, 'MachineName'),
@@ -131,8 +150,8 @@ export const workOrderDetailsMachineWise = (req, res) => runReport(req, res, {
 export const workOrderDetailsDepartmentWise = (req, res) => runReport(req, res, {
   spName: 'sp_WorkOrderDetails_GetAll',
   fileName: 'WorkOrderDetails_DepartmentWise',
-  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) => buildGrouped({
-    rows, companyName, companyLogo, fromDate, toDate,
+  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate, query }) => buildGrouped({
+    rows: filterRows(rows, query), companyName, companyLogo, fromDate, toDate,
     title: 'WORK ORDER SCHEDULE COMPLETE DETAILS - DEPARTMENT WISE',
     columns: [W.sno, W.woNo, W.machine, W.service, W.lastDone, W.woDate, W.duration, W.nextService, W.remarks, W.sign],
     groupKey: (r) => str(r, 'DepartmentCode') || str(r, 'DepartmentName'),
@@ -145,8 +164,8 @@ export const workOrderDetailsDepartmentWise = (req, res) => runReport(req, res, 
 export const workOrderDetailsServiceWise = (req, res) => runReport(req, res, {
   spName: 'sp_WorkOrderDetails_GetAll',
   fileName: 'WorkOrderDetails_ServiceActivityWise',
-  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) => buildGrouped({
-    rows, companyName, companyLogo, fromDate, toDate,
+  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate, query }) => buildGrouped({
+    rows: filterRows(rows, query), companyName, companyLogo, fromDate, toDate,
     title: 'WORK ORDER SCHEDULE COMPLETE - SERVICE ACTIVITY WISE',
     columns: [W.sno, W.woNo, W.machine, W.dept, W.lastDone, W.woDate, W.duration, W.nextService, W.remarks, W.sign],
     groupKey: (r) => str(r, 'ServiceActivityCode') || str(r, 'ServiceActivityName'),
@@ -159,8 +178,8 @@ export const workOrderDetailsServiceWise = (req, res) => runReport(req, res, {
 export const workOrderDetailsMachineWiseBreakDown = (req, res) => runReport(req, res, {
   spName: 'sp_WorkOrderDetails_GetAll',
   fileName: 'WorkOrderDetails_MachineWise_BreakDown',
-  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) => buildGrouped({
-    rows, companyName, companyLogo, fromDate, toDate,
+  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate, query }) => buildGrouped({
+    rows: filterRows(rows, query), companyName, companyLogo, fromDate, toDate,
     title: 'WORK ORDER BREAKDOWN DETAILS - MACHINE WISE',
     columns: [W.sno, W.dept, W.machine, W.breakdown, W.lastDone, W.woDate, W.itemName, W.remarksSB, W.attnBy],
     groupKey: (r) => str(r, 'MachineCode') || str(r, 'MachineName'),
@@ -169,3 +188,36 @@ export const workOrderDetailsMachineWiseBreakDown = (req, res) => runReport(req,
     sortRows: byWoDate, chartGroupHeader: 'Machine'
   })
 });
+
+// GET /mechanical/reports/work-order/options — Branch/Department/Machine/Service.
+export const workOrderOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const companyCode = parseInt(req.query.CompanyCode || req.headers.companycode) || 0;
+    const machineWhere = svcType(req) === 'M' ? 'Status = 1 AND MachineTypeCode = 1' : 'Status = 1';
+    const pool = await getPool(subDbName);
+    const [branches, departments, machines, services] = await Promise.all([
+      pool.request().input('CompanyCode', sql.Int, companyCode)
+        .query('SELECT BranchCode AS value, BranchName AS label FROM tbl_Branch WHERE CompanyCode = @CompanyCode ORDER BY BranchName'),
+      pool.request()
+        .query('SELECT DepartmentCode AS value, DepartmentName AS label FROM tbl_Department WHERE DepartmentCode IN (SELECT DepartmentCode FROM tbl_Machine WHERE Status = 1) ORDER BY DepartmentName'),
+      pool.request()
+        .query(`SELECT MachineCode AS value, MachineName AS label FROM tbl_Machine WHERE ${machineWhere} ORDER BY MachineName`),
+      pool.request()
+        .query('SELECT ServiceActivityCode AS value, ServiceActivityName AS label FROM tbl_ServiceActivity ORDER BY ServiceActivityName')
+    ]);
+    res.json({
+      success: true,
+      data: {
+        branches: branches.recordset,
+        departments: departments.recordset,
+        machines: machines.recordset,
+        services: services.recordset
+      }
+    });
+  } catch (err) {
+    console.error('Report Error (workOrderOptions):', err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};

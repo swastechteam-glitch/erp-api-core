@@ -9,8 +9,52 @@
 
 import {
   runReport, buildPage, tableLayout, colors,
-  dec, str, fmt, ddmmyyyy, chartFromRows
+  dec, str, fmt, ddmmyyyy, chartFromRows, sql
 } from '../cotton/_common.js';
+import { getPool } from '../../../config/dynamicDB.js';
+
+// ---- functional filters (port of the WinForms DataTable.Select chain) -------
+const codeSet = (v) => {
+  if (v === undefined || v === null || v === '') return null;
+  const s = new Set(String(v).split(',').map((x) => parseInt(x, 10)).filter((n) => !Number.isNaN(n)));
+  return s.size ? s : null;
+};
+const oneFilter = (rows, field, set) =>
+  (!set || !rows.length || !(field in rows[0])) ? rows : rows.filter((r) => set.has(parseInt(r[field], 10)));
+const filterRows = (rows, query = {}) => {
+  let out = rows || [];
+  out = oneFilter(out, 'BranchCode', codeSet(query.branchCode));
+  out = oneFilter(out, 'DepartmentCode', codeSet(query.departmentCode));
+  out = oneFilter(out, 'MachineCode', codeSet(query.machineCode));
+  out = oneFilter(out, 'ServiceActivityCode', codeSet(query.serviceActivityCode));
+  return out;
+};
+const svcType = (req) => (String(req.query.serviceType || 'M').toUpperCase() === 'E' ? 'E' : 'M');
+
+// sp_Maintenance_Consumption_GetAll — dates applied ONLY when the
+// "Next Service Date Filter" toggle is on (?nextDateFilter=1), mirroring the VB.
+const consumptionParams = (p, req) => {
+  const out = {
+    CompanyCode: { type: sql.Int, value: parseInt(p.CompanyCode) || 0 },
+    ServiceType: { type: sql.NVarChar, value: svcType(req) }
+  };
+  if (req.query.nextDateFilter === '1' || req.query.nextDateFilter === 'true') {
+    out.FromDate = { type: sql.DateTime, value: p.FromDate ? new Date(p.FromDate) : null };
+    out.ToDate = { type: sql.DateTime, value: p.ToDate ? new Date(p.ToDate) : null };
+  }
+  return out;
+};
+
+// sp_Schedule_BreakDownDetails_GetAll — Last/Previous consumption. FromDate/ToDate
+// are always applied here (legacy passes them unconditionally). SBtype 'S' =
+// service-schedule consumption, 'B' = break-down consumption.
+const lastParams = (sbType) => (p, req) => ({
+  FromDate: { type: sql.DateTime, value: p.FromDate ? new Date(p.FromDate) : null },
+  ToDate: { type: sql.DateTime, value: p.ToDate ? new Date(p.ToDate) : null },
+  CompanyCode: { type: sql.Int, value: parseInt(p.CompanyCode) || 0 },
+  ServiceType: { type: sql.NVarChar, value: svcType(req) },
+  SBtype: { type: sql.NVarChar, value: sbType }
+});
 
 // ---- helpers ---------------------------------------------------------------
 function groupBy(rows, keyFn) {
@@ -105,9 +149,9 @@ const byStr = (a, b) => String(a).localeCompare(String(b));
 // sp_Maintenance_Consumption_GetAll — Service Consumption
 // ============================================================================
 export const consumptionItemWise = (req, res) => runReport(req, res, {
-  spName: 'sp_Maintenance_Consumption_GetAll', fileName: 'ServiceConsumption_ItemWise',
+  spName: 'sp_Maintenance_Consumption_GetAll', spParams: consumptionParams, fileName: 'ServiceConsumption_ItemWise',
   buildDocDefinition: (ctx) => buildGrouped({
-    ...ctx, title: 'SERVICE CONSUMPTION DETAILS - ITEM WISE',
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'SERVICE CONSUMPTION DETAILS - ITEM WISE',
     columns: [C.sno, C.machine, C.service, C.uom, C.qty, C.rate, C.amount],
     groupKey: (r) => str(r, 'ItemCode') || str(r, 'ItemName'), groupLabel: (r) => str(r, 'ItemName'),
     sortGroups: byStr, qtyNum: qtyOf, amountNum: amtOf, chartGroupHeader: 'Item'
@@ -115,9 +159,9 @@ export const consumptionItemWise = (req, res) => runReport(req, res, {
 });
 
 export const consumptionMachineWise = (req, res) => runReport(req, res, {
-  spName: 'sp_Maintenance_Consumption_GetAll', fileName: 'ServiceConsumption_MachineWise',
+  spName: 'sp_Maintenance_Consumption_GetAll', spParams: consumptionParams, fileName: 'ServiceConsumption_MachineWise',
   buildDocDefinition: (ctx) => buildGrouped({
-    ...ctx, title: 'SERVICE CONSUMPTION DETAILS - MACHINE WISE',
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'SERVICE CONSUMPTION DETAILS - MACHINE WISE',
     columns: [C.sno, C.item, C.service, C.uom, C.qty, C.rate, C.amount],
     groupKey: (r) => str(r, 'MachineCode') || str(r, 'MachineName'), groupLabel: (r) => str(r, 'MachineName'),
     sortGroups: byStr, qtyNum: qtyOf, amountNum: amtOf, chartGroupHeader: 'Machine'
@@ -125,9 +169,9 @@ export const consumptionMachineWise = (req, res) => runReport(req, res, {
 });
 
 export const consumptionDepartmentWise = (req, res) => runReport(req, res, {
-  spName: 'sp_Maintenance_Consumption_GetAll', fileName: 'ServiceConsumption_DepartmentWise',
+  spName: 'sp_Maintenance_Consumption_GetAll', spParams: consumptionParams, fileName: 'ServiceConsumption_DepartmentWise',
   buildDocDefinition: (ctx) => buildGrouped({
-    ...ctx, title: 'SERVICE CONSUMPTION DETAILS - DEPARTMENT WISE',
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'SERVICE CONSUMPTION DETAILS - DEPARTMENT WISE',
     columns: [C.sno, C.machine, C.item, C.uom, C.qty, C.rate, C.amount],
     groupKey: (r) => str(r, 'DepartmentCode') || str(r, 'DepartmentName'), groupLabel: (r) => str(r, 'DepartmentName'),
     sortGroups: byStr, qtyNum: qtyOf, amountNum: amtOf, chartGroupHeader: 'Department'
@@ -135,9 +179,9 @@ export const consumptionDepartmentWise = (req, res) => runReport(req, res, {
 });
 
 export const consumptionDateWise = (req, res) => runReport(req, res, {
-  spName: 'sp_Maintenance_Consumption_GetAll', fileName: 'ServiceConsumption_DateWise',
+  spName: 'sp_Maintenance_Consumption_GetAll', spParams: consumptionParams, fileName: 'ServiceConsumption_DateWise',
   buildDocDefinition: (ctx) => buildGrouped({
-    ...ctx, title: 'SERVICE CONSUMPTION DETAILS - DATE WISE',
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'SERVICE CONSUMPTION DETAILS - DATE WISE',
     columns: [C.sno, C.item, C.machine, C.service, C.uom, C.qty, C.rate, C.amount],
     groupKey: (r) => (r.NextServiceDate ? new Date(r.NextServiceDate).toISOString().slice(0, 10) : ''),
     groupLabel: (r) => ddmmyyyy(r.NextServiceDate),
@@ -149,9 +193,9 @@ export const consumptionDateWise = (req, res) => runReport(req, res, {
 // sp_Schedule_BreakDownDetails_GetAll — Last Service Consumption
 // ============================================================================
 export const lastConsumptionItemWise = (req, res) => runReport(req, res, {
-  spName: 'sp_Schedule_BreakDownDetails_GetAll', fileName: 'LastServiceConsumption_ItemWise',
+  spName: 'sp_Schedule_BreakDownDetails_GetAll', spParams: lastParams('S'), fileName: 'LastServiceConsumption_ItemWise',
   buildDocDefinition: (ctx) => buildGrouped({
-    ...ctx, title: 'LAST SERVICE CONSUMPTION DETAILS - ITEM WISE',
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'LAST SERVICE CONSUMPTION DETAILS - ITEM WISE',
     columns: [C.sno, C.sbDate, C.machine, C.service, C.uom, C.qty, C.rate, C.amountCalc],
     groupKey: (r) => str(r, 'ItemCode') || str(r, 'ItemName'), groupLabel: (r) => str(r, 'ItemName'),
     sortGroups: byStr, qtyNum: qtyOf, amountNum: amtCalc, chartGroupHeader: 'Item'
@@ -159,10 +203,33 @@ export const lastConsumptionItemWise = (req, res) => runReport(req, res, {
 });
 
 export const lastConsumptionMachineWise = (req, res) => runReport(req, res, {
-  spName: 'sp_Schedule_BreakDownDetails_GetAll', fileName: 'LastServiceConsumption_MachineWise',
+  spName: 'sp_Schedule_BreakDownDetails_GetAll', spParams: lastParams('S'), fileName: 'LastServiceConsumption_MachineWise',
   buildDocDefinition: (ctx) => buildGrouped({
-    ...ctx, title: 'LAST SERVICE CONSUMPTION DETAILS - MACHINE WISE',
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'LAST SERVICE CONSUMPTION DETAILS - MACHINE WISE',
     columns: [C.sno, C.sbDate, C.item, C.service, C.uom, C.qty, C.rate, C.amountCalc],
+    groupKey: (r) => str(r, 'MachineCode') || str(r, 'MachineName'), groupLabel: (r) => str(r, 'MachineName'),
+    sortGroups: byStr, qtyNum: qtyOf, amountNum: amtCalc, chartGroupHeader: 'Machine'
+  })
+});
+
+// BreakDown consumption (SBtype='B') — BreakDown Item Wise / Machine Wise.
+const breakdownCol = { header: 'BreakDown', width: '*', value: (r) => str(r, 'BreakDownName') };
+
+export const breakDownConsumptionItemWise = (req, res) => runReport(req, res, {
+  spName: 'sp_Schedule_BreakDownDetails_GetAll', spParams: lastParams('B'), fileName: 'BreakDownConsumption_ItemWise',
+  buildDocDefinition: (ctx) => buildGrouped({
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'BREAKDOWN CONSUMPTION DETAILS - ITEM WISE',
+    columns: [C.sno, C.sbDate, C.machine, breakdownCol, C.uom, C.qty, C.rate, C.amountCalc],
+    groupKey: (r) => str(r, 'ItemCode') || str(r, 'ItemName'), groupLabel: (r) => str(r, 'ItemName'),
+    sortGroups: byStr, qtyNum: qtyOf, amountNum: amtCalc, chartGroupHeader: 'Item'
+  })
+});
+
+export const breakDownConsumptionMachineWise = (req, res) => runReport(req, res, {
+  spName: 'sp_Schedule_BreakDownDetails_GetAll', spParams: lastParams('B'), fileName: 'BreakDownConsumption_MachineWise',
+  buildDocDefinition: (ctx) => buildGrouped({
+    ...ctx, rows: filterRows(ctx.rows, ctx.query), title: 'BREAKDOWN CONSUMPTION DETAILS - MACHINE WISE',
+    columns: [C.sno, C.sbDate, C.item, breakdownCol, C.uom, C.qty, C.rate, C.amountCalc],
     groupKey: (r) => str(r, 'MachineCode') || str(r, 'MachineName'), groupLabel: (r) => str(r, 'MachineName'),
     sortGroups: byStr, qtyNum: qtyOf, amountNum: amtCalc, chartGroupHeader: 'Machine'
   })
@@ -209,3 +276,36 @@ export const maintenanceItemStock = (req, res) => runReport(req, res, {
   spName: 'sp_Store_Maintence_StockStatus', fileName: 'Maintenance_ItemStock',
   buildDocDefinition: (ctx) => buildItemStock(ctx)
 });
+
+// GET /mechanical/reports/next-service-consumption/options — filter dropdowns.
+export const nextServiceConsumptionOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const companyCode = parseInt(req.query.CompanyCode || req.headers.companycode) || 0;
+    const machineWhere = svcType(req) === 'M' ? 'Status = 1 AND MachineTypeCode = 1' : 'Status = 1';
+    const pool = await getPool(subDbName);
+    const [branches, departments, machines, services] = await Promise.all([
+      pool.request().input('CompanyCode', sql.Int, companyCode)
+        .query('SELECT BranchCode AS value, BranchName AS label FROM tbl_Branch WHERE CompanyCode = @CompanyCode ORDER BY BranchName'),
+      pool.request()
+        .query('SELECT DepartmentCode AS value, DepartmentName AS label FROM tbl_Department ORDER BY DepartmentName'),
+      pool.request().input('CompanyCode', sql.Int, companyCode)
+        .query(`SELECT MachineCode AS value, MachineName AS label FROM tbl_Machine WHERE CompanyCode = @CompanyCode AND ${machineWhere} ORDER BY MachineName`),
+      pool.request()
+        .query('SELECT ServiceActivityCode AS value, ServiceActivityName AS label FROM tbl_ServiceActivity ORDER BY ServiceActivityName')
+    ]);
+    res.json({
+      success: true,
+      data: {
+        branches: branches.recordset,
+        departments: departments.recordset,
+        machines: machines.recordset,
+        services: services.recordset
+      }
+    });
+  } catch (err) {
+    console.error('Report Error (nextServiceConsumptionOptions):', err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};

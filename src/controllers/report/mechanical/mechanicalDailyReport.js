@@ -13,6 +13,22 @@ import {
   runMultiReport, buildPage, tableLayout, colors,
   dec, str, fmt, ddmmyyyy, sql
 } from '../cotton/_common.js';
+import { getPool } from '../../../config/dynamicDB.js';
+
+// ---- functional filters (port of the WinForms DataTable.Select chain) -------
+const codeSet = (v) => {
+  if (v === undefined || v === null || v === '') return null;
+  const s = new Set(String(v).split(',').map((x) => parseInt(x, 10)).filter((n) => !Number.isNaN(n)));
+  return s.size ? s : null;
+};
+const oneFilter = (rows, field, set) =>
+  (!set || !rows.length || !(field in rows[0])) ? rows : rows.filter((r) => set.has(parseInt(r[field], 10)));
+const filterRows = (rows, query = {}) => {
+  let out = rows || [];
+  out = oneFilter(out, 'BranchCode', codeSet(query.branchCode));
+  out = oneFilter(out, 'DepartmentCode', codeSet(query.departmentCode));
+  return out;
+};
 
 // ---- helpers ---------------------------------------------------------------
 const headRow = (columns) =>
@@ -60,7 +76,9 @@ const sno = { header: 'S.No', width: 28, align: 'center', value: (r, i) => Strin
 
 function makeBuildDocDefinition(defaultServiceType) {
   return function buildDocDefinition({ data, companyName, companyLogo, fromDate, toDate, query }) {
-  const d = data || {};
+  const raw = data || {};
+  // Branch / Department filters applied to every section (port of the VB DataTable.Select).
+  const d = Object.fromEntries(Object.entries(raw).map(([k, rows]) => [k, filterRows(rows, query)]));
   const st = (query && query.ServiceType) || defaultServiceType;
   const serviceType = st ? `${st} ` : '';
   const tables = [];
@@ -163,3 +181,26 @@ export function makeDailyReport({ fileName, defaultServiceType }) {
 }
 
 export const mechanicalDailyReport = makeDailyReport({ fileName: 'MechanicalDailyReport', defaultServiceType: 'M' });
+
+// GET /mechanical/reports/daily-report/options — Branch / Department dropdowns.
+export const mechanicalDailyReportOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const companyCode = parseInt(req.query.CompanyCode || req.headers.companycode) || 0;
+    const pool = await getPool(subDbName);
+    const [branches, departments] = await Promise.all([
+      pool.request().input('CompanyCode', sql.Int, companyCode)
+        .query('SELECT BranchCode AS value, BranchName AS label FROM tbl_Branch WHERE CompanyCode = @CompanyCode ORDER BY BranchName'),
+      pool.request()
+        .query('SELECT DepartmentCode AS value, DepartmentName AS label FROM tbl_Department WHERE DepartmentCode IN (SELECT DepartmentCode FROM tbl_Machine WHERE Status = 1) ORDER BY DepartmentName')
+    ]);
+    res.json({
+      success: true,
+      data: { branches: branches.recordset, departments: departments.recordset }
+    });
+  } catch (err) {
+    console.error('Report Error (mechanicalDailyReportOptions):', err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};

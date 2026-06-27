@@ -72,7 +72,9 @@ import {
 import {
   compressorDateWise,
   compressorPerformance,
-  compressorMonthWise
+  compressorMonthWise,
+  compressorMachineWise,
+  compressorReadingOptions
 } from "../controllers/report/electrical/compressorReading.js";
 import { electricalEbReadingDateWise } from "../controllers/report/electrical/electricalEbReading.js";
 import { ebBillDateWise } from "../controllers/report/electrical/ebBillMonthly.js";
@@ -158,6 +160,8 @@ router.get("/generator-reading/month-wise", authenticate, generatorMonthWise);
 router.get("/compressor-reading/date-wise", authenticate, compressorDateWise);
 router.get("/compressor-reading/performance", authenticate, compressorPerformance);
 router.get("/compressor-reading/month-wise", authenticate, compressorMonthWise);
+router.get("/compressor-reading/machine-wise", authenticate, compressorMachineWise);
+router.get("/compressor-reading/options", authenticate, compressorReadingOptions);
 
 // Electrical -> Electrical EB Reading (composite daily report)
 router.get("/electrical-eb-reading/date-wise", authenticate, electricalEbReadingDateWise);

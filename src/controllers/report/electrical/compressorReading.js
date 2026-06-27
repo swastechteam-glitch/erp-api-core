@@ -8,8 +8,26 @@
 
 import {
   runReport, buildPage, tableLayout, colors,
-  dec, str, fmt, ddmmyyyy, chartFromRows
+  dec, str, fmt, ddmmyyyy, chartFromRows, sql
 } from '../cotton/_common.js';
+import { getPool } from '../../../config/dynamicDB.js';
+
+// ---- functional filters (port of the WinForms DataTable.Select chain) -------
+const codeSet = (v) => {
+  if (v === undefined || v === null || v === '') return null;
+  const s = new Set(String(v).split(',').map((x) => parseInt(x, 10)).filter((n) => !Number.isNaN(n)));
+  return s.size ? s : null;
+};
+const oneFilter = (rows, field, set) =>
+  (!set || !rows.length || !(field in rows[0])) ? rows : rows.filter((r) => set.has(parseInt(r[field], 10)));
+const filterRows = (rows, query = {}) => {
+  let out = rows || [];
+  out = oneFilter(out, 'BranchCode', codeSet(query.branchCode));
+  out = oneFilter(out, 'CompressorGroupMasterCode', codeSet(query.compressorGroupMasterCode));
+  out = oneFilter(out, 'MachineCode', codeSet(query.machineCode));
+  out = oneFilter(out, 'ShiftCode', codeSet(query.shiftCode));
+  return out;
+};
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const headRow = (cells) =>
@@ -30,10 +48,10 @@ function groupBy(rows, keyFn) {
 }
 
 // Flat detail grouped by compressor group, with a closing Grand Total.
-function buildGroupedFlat({ rows, columns, title, companyName, companyLogo, fromDate, toDate, chartValue, chartHeader }) {
+function buildGroupedFlat({ rows, columns, title, companyName, companyLogo, fromDate, toDate, chartValue, chartHeader, groupField = 'CompressorGroupMasterName', groupCaption = 'Compressor Group' }) {
   const span = columns.length;
   const body = [headRow(columns.map((c) => c.header))];
-  const groups = [...groupBy(rows || [], (r) => str(r, 'CompressorGroupMasterName')).entries()]
+  const groups = [...groupBy(rows || [], (r) => str(r, groupField)).entries()]
     .sort((a, b) => a[0].localeCompare(b[0]));
   let sno = 0;
   const grand = {};
@@ -41,7 +59,7 @@ function buildGroupedFlat({ rows, columns, title, companyName, companyLogo, from
 
   for (const [, gRows] of groups) {
     gRows.sort((a, b) => new Date(a.CompressorReadingDate) - new Date(b.CompressorReadingDate));
-    body.push(groupRowNode(`Compressor Group : ${str(gRows[0], 'CompressorGroupMasterName')}`, span));
+    body.push(groupRowNode(`${groupCaption} : ${str(gRows[0], groupField)}`, span));
     gRows.forEach((r) => {
       const z = zebraOf(sno);
       sno++;
@@ -92,11 +110,25 @@ const C = {
 export const compressorDateWise = (req, res) => runReport(req, res, {
   spName: 'sp_CompressorReplacement',
   fileName: 'CompressorReading_Consolidation',
-  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) =>
+  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate, query }) =>
     buildGroupedFlat({
-      rows, companyName, companyLogo, fromDate, toDate,
+      rows: filterRows(rows, query), companyName, companyLogo, fromDate, toDate,
       title: 'COMPRESSOR RUN DETAILS - CONSOLIDATION',
       columns: [C.sno, C.date, C.machine, C.totRun, C.runHrs, C.oil, C.radiator, C.cfm, C.due, C.high, C.low, C.cost],
+      chartValue: (r) => dec(r, 'RunDifference'), chartHeader: 'Run Hours'
+    })
+});
+
+// Machine Wise — same consolidation detail but grouped by machine.
+export const compressorMachineWise = (req, res) => runReport(req, res, {
+  spName: 'sp_CompressorReplacement',
+  fileName: 'CompressorReading_MachineWise',
+  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate, query }) =>
+    buildGroupedFlat({
+      rows: filterRows(rows, query), companyName, companyLogo, fromDate, toDate,
+      title: 'COMPRESSOR RUN DETAILS - MACHINE WISE',
+      groupField: 'MachineName', groupCaption: 'Machine',
+      columns: [C.sno, C.date, C.totRun, C.runHrs, C.oil, C.radiator, C.cfm, C.due, C.high, C.low, C.cost],
       chartValue: (r) => dec(r, 'RunDifference'), chartHeader: 'Run Hours'
     })
 });
@@ -105,9 +137,9 @@ export const compressorDateWise = (req, res) => runReport(req, res, {
 export const compressorPerformance = (req, res) => runReport(req, res, {
   spName: 'sp_CompressorReplacement',
   fileName: 'CompressorReading_Performance',
-  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) =>
+  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate, query }) =>
     buildGroupedFlat({
-      rows, companyName, companyLogo, fromDate, toDate,
+      rows: filterRows(rows, query), companyName, companyLogo, fromDate, toDate,
       title: 'COMPRESSOR RUN DETAILS - PERFORMANCE',
       columns: [
         C.sno, C.date, C.machine, C.totRun, C.runHrs, C.oil, C.radiator, C.cfm,
@@ -124,7 +156,8 @@ export const compressorPerformance = (req, res) => runReport(req, res, {
 export const compressorMonthWise = (req, res) => runReport(req, res, {
   spName: 'sp_CompressorReplacement',
   fileName: 'CompressorReading_MonthWise',
-  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) => {
+  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate, query }) => {
+    rows = filterRows(rows, query);
     const cols = ['Month', 'Machine', 'Tot Run Hrs', 'Run Hrs', 'Oil Press', 'Radiator Temp', 'CFM', 'Due Point', 'High Press', 'Low Press', 'Replace Cost'];
     const span = cols.length;
     const body = [headRow(cols)];
@@ -171,3 +204,36 @@ export const compressorMonthWise = (req, res) => runReport(req, res, {
     return buildPage({ companyName, companyLogo, title: 'COMPRESSOR RUN DETAILS - MONTH WISE', fromDate, toDate, tables: [...chart, table] });
   }
 });
+
+// GET /electrical/reports/compressor-reading/options — filter dropdowns
+// (Branch / Com.Group Master / Machine / Shift).
+export const compressorReadingOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const companyCode = parseInt(req.query.CompanyCode || req.headers.companycode) || 0;
+    const pool = await getPool(subDbName);
+    const [branches, groups, machines, shifts] = await Promise.all([
+      pool.request().input('CompanyCode', sql.Int, companyCode)
+        .query('SELECT BranchCode AS value, BranchName AS label FROM tbl_Branch WHERE CompanyCode = @CompanyCode ORDER BY BranchName'),
+      pool.request()
+        .query('SELECT CompressorGroupMasterCode AS value, CompressorGroupMasterName AS label FROM tbl_CompressorGroupMaster ORDER BY CompressorGroupMasterName'),
+      pool.request().input('CompanyCode', sql.Int, companyCode)
+        .query('SELECT MachineCode AS value, MachineName AS label FROM tbl_Machine WHERE CompanyCode = @CompanyCode ORDER BY MachineName'),
+      pool.request()
+        .query('SELECT ShiftCode AS value, ShiftName AS label FROM tbl_Shift ORDER BY ShiftName')
+    ]);
+    res.json({
+      success: true,
+      data: {
+        branches: branches.recordset,
+        compressorGroups: groups.recordset,
+        machines: machines.recordset,
+        shifts: shifts.recordset
+      }
+    });
+  } catch (err) {
+    console.error('Report Error (compressorReadingOptions):', err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};
