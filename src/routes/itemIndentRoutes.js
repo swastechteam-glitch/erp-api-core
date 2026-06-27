@@ -1,6 +1,7 @@
 import express from "express";
 import {
   getOptions,
+  getItems,
   getMachines,
   getNextNo,
   getList,
@@ -15,6 +16,7 @@ const router = express.Router();
 
 // Item Issue Indent (frmItemIndent / frmItemRequisition_IndentDetails)
 router.get("/options", authenticate, getOptions);
+router.get("/items", authenticate, getItems);
 router.get("/machines", authenticate, getMachines);
 router.get("/next-no", authenticate, getNextNo);
 router.get("/lists", authenticate, getList);
