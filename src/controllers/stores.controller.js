@@ -904,6 +904,57 @@ export const getPurchaseOrderApproval = async (req, res) => {
   }
 };
 
+// Stage-1 PO approval list WITH the WinForms filters: tab (pendings / approved /
+// rejected) + Supplier + server-side paging. Calls the real SP
+// sp_PurchaseOrder_Approval_1_Pendings, mirroring frmPurchaseOrderApproval_Stage1
+// .BindPaged() exactly — optional @SupplierCode/@Approved/@Rejected, @PageNumber/
+// @PageSize, and a TotalRecords column on row 0 (the SP pages internally). Kept
+// SEPARATE from getPurchaseOrderApproval (the dashboard count) so that stays put.
+export const getPurchaseOrderApprovalFiltered = async (req, res) => {
+  try {
+    const q = req.query;
+    const page = parseInt(q?.page) || 1;
+    const pageSize = parseInt(q?.pageSize) || 10;
+
+    if (!req.headers.subdbname)
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing subDBName" });
+
+    const pool = await getPool(req.headers.subdbname);
+    const request = pool.request();
+
+    // Mirror BindPaged(): only the supplier + the active tab's flag are passed;
+    // pendings passes neither @Approved nor @Rejected (SP defaults handle it).
+    const supplierCode = parseInt(q?.supplierCode) || 0;
+    if (supplierCode > 0) request.input("SupplierCode", sql.Int, supplierCode);
+    if (parseInt(q?.approved) === 1) request.input("Approved", sql.Int, 1);
+    if (parseInt(q?.rejected) === 1) request.input("Rejected", sql.Int, 1);
+    request.input("PageNumber", sql.Int, page);
+    request.input("PageSize", sql.Int, pageSize);
+
+    const result = await request.execute("sp_PurchaseOrder_Approval_1_Pendings");
+    const rows = (result.recordset || []).map((item) => ({
+      ...item,
+      id: item.PurchaseOrderCode,
+    }));
+    const totalRecords =
+      rows.length > 0 && rows[0].TotalRecords != null
+        ? Number(rows[0].TotalRecords)
+        : rows.length;
+
+    res.status(200).json({
+      totalRecords,
+      currentPage: page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(totalRecords / pageSize)),
+      data: rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export const getPurchaseOrderGMApproval = async (req, res) => {
   try {
     const paramData = req.query;
@@ -944,6 +995,88 @@ export const getPurchaseOrderGMApproval = async (req, res) => {
   }
 };
 
+// Backfills OrderNo / OrderDate on approval-list rows straight from
+// tbl_PurchaseOrder. The Stage-2/3 pending SPs don't surface the PO number/date
+// under the OrderNo/OrderDate columns the list renders (Stage-1 does), so those
+// two cells showed blank. One read-only query per page; no SP is changed.
+const fillOrderNoDate = async (pool, rows) => {
+  const blank = (v) => v === null || v === undefined || v === "";
+  const codes = [
+    ...new Set(rows.map((r) => Number(r.PurchaseOrderCode)).filter((n) => n > 0)),
+  ];
+  if (!codes.length) return rows;
+
+  const lookup = await pool.request().query(
+    `SELECT PurchaseOrderCode, PurchaseOrderNo, PurchaseOrderDate
+     FROM tbl_PurchaseOrder WHERE PurchaseOrderCode IN (${codes.join(",")})`,
+  );
+  const byCode = {};
+  (lookup.recordset || []).forEach((p) => {
+    byCode[Number(p.PurchaseOrderCode)] = p;
+  });
+
+  return rows.map((r) => {
+    const po = byCode[Number(r.PurchaseOrderCode)];
+    if (!po) return r;
+    return {
+      ...r,
+      OrderNo: blank(r.OrderNo) ? po.PurchaseOrderNo : r.OrderNo,
+      OrderDate: blank(r.OrderDate) ? po.PurchaseOrderDate : r.OrderDate,
+    };
+  });
+};
+
+// Stage-2 (GM) PO approval list WITH the WinForms filters: tab + Supplier +
+// @CompanyCode + server paging. Calls the real sp_PurchaseOrder_Approval_2_Pendings,
+// mirroring frmPurchaseOrderApproval_Stage2.BindPaged(). Kept SEPARATE from
+// getPurchaseOrderGMApproval (the dashboard count).
+export const getPurchaseOrderGMApprovalFiltered = async (req, res) => {
+  try {
+    const q = req.query;
+    const page = parseInt(q?.page) || 1;
+    const pageSize = parseInt(q?.pageSize) || 10;
+
+    if (!req.headers.subdbname)
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing subDBName" });
+
+    const pool = await getPool(req.headers.subdbname);
+    const request = pool.request();
+
+    // Mirror BindPaged(): @CompanyCode + Supplier + the active tab's flag.
+    const cc = parseInt(q?.companyCode) || 0;
+    if (cc > 0) request.input("CompanyCode", sql.Int, cc);
+    const supplierCode = parseInt(q?.supplierCode) || 0;
+    if (supplierCode > 0) request.input("SupplierCode", sql.Int, supplierCode);
+    if (parseInt(q?.approved) === 1) request.input("Approved", sql.Int, 1);
+    if (parseInt(q?.rejected) === 1) request.input("Rejected", sql.Int, 1);
+    request.input("PageNumber", sql.Int, page);
+    request.input("PageSize", sql.Int, pageSize);
+
+    const result = await request.execute("sp_PurchaseOrder_Approval_2_Pendings");
+    let rows = (result.recordset || []).map((item) => ({
+      ...item,
+      id: item.PurchaseOrderCode,
+    }));
+    rows = await fillOrderNoDate(pool, rows);
+    const totalRecords =
+      rows.length > 0 && rows[0].TotalRecords != null
+        ? Number(rows[0].TotalRecords)
+        : rows.length;
+
+    res.status(200).json({
+      totalRecords,
+      currentPage: page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(totalRecords / pageSize)),
+      data: rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export const getPurchaseOrderMDApproval = async (req, res) => {
   try {
     const paramData = req.query;
@@ -978,6 +1111,57 @@ export const getPurchaseOrderMDApproval = async (req, res) => {
       pageSize: pageSize,
       totalPages: Math.ceil(data.length / pageSize),
       data: paginatedData,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Stage-3 (MD) PO approval list WITH the WinForms filters: tab + Supplier +
+// @CompanyCode + server paging. Calls the real sp_PurchaseOrder_Approval_3_Pendings,
+// mirroring frmPurchaseOrderApproval_Stage3.BindPaged(). Kept SEPARATE from
+// getPurchaseOrderMDApproval (the dashboard count).
+export const getPurchaseOrderMDApprovalFiltered = async (req, res) => {
+  try {
+    const q = req.query;
+    const page = parseInt(q?.page) || 1;
+    const pageSize = parseInt(q?.pageSize) || 10;
+
+    if (!req.headers.subdbname)
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing subDBName" });
+
+    const pool = await getPool(req.headers.subdbname);
+    const request = pool.request();
+
+    // Mirror BindPaged(): @CompanyCode + Supplier + the active tab's flag.
+    const cc = parseInt(q?.companyCode) || 0;
+    if (cc > 0) request.input("CompanyCode", sql.Int, cc);
+    const supplierCode = parseInt(q?.supplierCode) || 0;
+    if (supplierCode > 0) request.input("SupplierCode", sql.Int, supplierCode);
+    if (parseInt(q?.approved) === 1) request.input("Approved", sql.Int, 1);
+    if (parseInt(q?.rejected) === 1) request.input("Rejected", sql.Int, 1);
+    request.input("PageNumber", sql.Int, page);
+    request.input("PageSize", sql.Int, pageSize);
+
+    const result = await request.execute("sp_PurchaseOrder_Approval_3_Pendings");
+    let rows = (result.recordset || []).map((item) => ({
+      ...item,
+      id: item.PurchaseOrderCode,
+    }));
+    rows = await fillOrderNoDate(pool, rows);
+    const totalRecords =
+      rows.length > 0 && rows[0].TotalRecords != null
+        ? Number(rows[0].TotalRecords)
+        : rows.length;
+
+    res.status(200).json({
+      totalRecords,
+      currentPage: page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(totalRecords / pageSize)),
+      data: rows,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

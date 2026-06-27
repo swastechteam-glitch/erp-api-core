@@ -2099,47 +2099,95 @@ export const storePurchaseOrderApprovalGM = async (req, res) => {
 
     const pool = await getPool(req.headers.subdbname);
     const { userId, nodeCode } = req.headers;
+    const poCode = bodyData.purchaseOrderCode;
 
     if (bodyData.reject === 1 && !bodyData.rejectReason)
       return res
         .status(400)
         .json({ success: false, message: "Reject reason is required." });
 
+    // ---- Business guards (mirror frmPurchaseOrderApproval_Stage2). Read-only;
+    //      block before any write. Returns success:false so the UI shows the
+    //      message without treating it as a server error. ----
+    const guard = await pool
+      .request()
+      .input("PurchaseOrderCode", sql.Int, poCode)
+      .query(
+        `SELECT
+           ISNULL(po.Approve1, 0)        AS Approve1,
+           ISNULL(po.Approve3, 0)        AS Approve3,
+           ISNULL(po.TotalNetAmount, 0)  AS TotalNetAmount,
+           (SELECT COUNT(1) FROM tbl_PurchaseOrderDetails d
+              WHERE d.PurchaseOrderCode = @PurchaseOrderCode
+                AND ISNULL(d.PO_Close, 0) = 1) AS ClosedCount
+         FROM tbl_PurchaseOrder po
+         WHERE po.PurchaseOrderCode = @PurchaseOrderCode`,
+      );
+    const g = guard.recordset?.[0] || {};
+
+    // Already approved at the next (MD) stage?
+    if (Number(g.Approve3) === 1)
+      return res.status(200).json({
+        success: false,
+        message: "This Purchase Order is Already Approved in Next Stage",
+      });
+    // Not yet approved at the previous (Stage-1) stage?
+    if (Number(g.Approve1) === 0)
+      return res.status(200).json({
+        success: false,
+        message:
+          "This Purchase Order is pending or rejected at a previous stage. Please refresh the screen.",
+      });
+    // PO already closed?
+    if (Number(g.ClosedCount) > 0)
+      return res.status(200).json({
+        success: false,
+        message: "This Purchase Order is Already Closed",
+      });
+
+    // MD approval limit: when the PO net amount is BELOW tbl_Setting.POApproval_MD,
+    // GM approval is final and auto-clears the MD stage too; otherwise the PO
+    // goes on to MD. (Mirrors the Stage-2 btnSave_Click TotalNetAmount check.)
+    let mdLimit = 0;
+    if (bodyData.reject !== 1) {
+      const limitRes = await pool
+        .request()
+        .query(
+          `SELECT TOP 1 ISNULL(POApproval_MD, 0) AS POApproval_MD FROM tbl_Setting`,
+        );
+      mdLimit = Number(limitRes.recordset?.[0]?.POApproval_MD || 0);
+    }
+    const totalNetAmount = Number(g.TotalNetAmount || 0);
+
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
 
     try {
-      const checkRequest = new sql.Request(transaction);
-      const result = await checkRequest
-        .input("PurchaseOrderCode", sql.Int, bodyData.purchaseOrderCode)
-        .query(
-          `SELECT TotalNetAmount FROM tbl_PurchaseOrder WHERE PurchaseOrderCode = @PurchaseOrderCode`,
-        );
-      const totalNetAmount = result.recordset?.[0]?.TotalNetAmount || 0;
-
       const requestAction = new sql.Request(transaction);
       // applyBranchCode(requestAction, req.headers); // 👈 Fix applied
 
       if (bodyData.reject === 1) {
         await requestAction
-          .input("PurchaseOrderCode", sql.Int, bodyData.purchaseOrderCode)
+          .input("PurchaseOrderCode", sql.Int, poCode)
           .input("UserCode", sql.Int, userId)
           .input("NodeCode", sql.Int, nodeCode)
           .input("RejectReason", sql.NVarChar(500), bodyData.rejectReason)
           .execute("sp_PurchaseOrder_Approval_2_Reject");
       } else {
         await requestAction
-          .input("PurchaseOrderCode", sql.Int, bodyData.purchaseOrderCode)
+          .input("PurchaseOrderCode", sql.Int, poCode)
           .input("UserCode", sql.Int, userId)
           .input("NodeCode", sql.Int, nodeCode)
           .input("RejectReason", sql.NVarChar(500), bodyData.rejectReason || "")
           .execute("sp_PurchaseOrder_Approval_2_Update");
 
-        if (totalNetAmount <= 50000 && req.headers.subdbname == "KAS") {
+        // mdLimit defaults to 0 (ISNULL), so for any real PO this strict `<`
+        // reproduces the VB `If TotalNetAmount < POApproval_MD` exactly.
+        if (totalNetAmount < mdLimit) {
           const approval3Req = new sql.Request(transaction);
           // applyBranchCode(approval3Req, req.headers); // 👈 Fix applied
           await approval3Req
-            .input("PurchaseOrderCode", sql.Int, bodyData.purchaseOrderCode)
+            .input("PurchaseOrderCode", sql.Int, poCode)
             .input("UserCode", sql.Int, userId)
             .input("NodeCode", sql.Int, nodeCode)
             .input(
@@ -2194,7 +2242,7 @@ export const storePurchaseOrderApprovalGM = async (req, res) => {
       return res.status(500).json({ success: false, message: err.message });
     }
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -2208,11 +2256,50 @@ export const storePurchaseOrderApprovalMD = async (req, res) => {
 
     const pool = await getPool(req.headers.subdbname);
     const { userId, nodeCode } = req.headers;
+    const poCode = bodyData.purchaseOrderCode;
 
     if (bodyData.reject === 1 && !bodyData.rejectReason)
       return res
         .status(400)
         .json({ success: false, message: "Reject reason is required." });
+
+    // ---- Business guards (mirror frmPurchaseOrderApproval_Stage3). Read-only;
+    //      block before any write. ----
+    const guard = await pool
+      .request()
+      .input("PurchaseOrderCode", sql.Int, poCode)
+      .query(
+        `SELECT
+           ISNULL(po.Approve2, 0) AS Approve2,
+           (SELECT COUNT(1) FROM tbl_PurchaseOrderReceivedDetails r
+              WHERE r.PurchaseOrderCode = @PurchaseOrderCode) AS InwardCount,
+           (SELECT COUNT(1) FROM tbl_PurchaseOrderDetails d
+              WHERE d.PurchaseOrderCode = @PurchaseOrderCode
+                AND ISNULL(d.PO_Close, 0) = 1) AS ClosedCount
+         FROM tbl_PurchaseOrder po
+         WHERE po.PurchaseOrderCode = @PurchaseOrderCode`,
+      );
+    const g = guard.recordset?.[0] || {};
+
+    // Already inwarded?
+    if (Number(g.InwardCount) > 0)
+      return res.status(200).json({
+        success: false,
+        message: "This Purchase Order is already Inwarded",
+      });
+    // PO already closed?
+    if (Number(g.ClosedCount) > 0)
+      return res.status(200).json({
+        success: false,
+        message: "This Purchase Order is already Closed",
+      });
+    // Not yet approved at the previous (GM) stage?
+    if (Number(g.Approve2) === 0)
+      return res.status(200).json({
+        success: false,
+        message:
+          "This Purchase Order is pending or rejected at a previous stage. Please refresh the screen.",
+      });
 
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
@@ -2223,14 +2310,14 @@ export const storePurchaseOrderApprovalMD = async (req, res) => {
 
       if (bodyData.reject === 1) {
         await requestAction
-          .input("PurchaseOrderCode", sql.Int, bodyData.purchaseOrderCode)
+          .input("PurchaseOrderCode", sql.Int, poCode)
           .input("UserCode", sql.Int, userId)
           .input("NodeCode", sql.Int, nodeCode)
           .input("RejectReason", sql.NVarChar(500), bodyData.rejectReason)
           .execute("sp_PurchaseOrder_Approval_3_Reject");
       } else {
         await requestAction
-          .input("PurchaseOrderCode", sql.Int, bodyData.purchaseOrderCode)
+          .input("PurchaseOrderCode", sql.Int, poCode)
           .input("UserCode", sql.Int, userId)
           .input("NodeCode", sql.Int, nodeCode)
           .input("RejectReason", sql.NVarChar(500), bodyData.rejectReason || "")
@@ -2276,7 +2363,7 @@ export const storePurchaseOrderApprovalMD = async (req, res) => {
       return res.status(500).json({ success: false, message: err.message });
     }
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
 
