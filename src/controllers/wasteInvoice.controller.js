@@ -65,13 +65,29 @@ export const getOptions = async (req, res) => {
       ),
     ]);
 
-    // Vehicles via sp_Vehicle_GetAll (status active).
+    // Vehicles — use the SAME source as the Waste DC (vw_Vehicle, delivery type
+    // VehicleTypeCode = 1) so every vehicle that can be saved on a DC is also
+    // present here and pre-fills/displays when an invoice is raised against that
+    // DC. (sp_Vehicle_GetAll returns a different/active-only set, so a DC vehicle
+    // could be missing and the dropdown would show blank.) Falls back to
+    // sp_Vehicle_GetAll only if the view is unavailable.
     let vehicles = [];
     try {
-      const v = await pool.request().input("Status", sql.Int, 1).execute("sp_Vehicle_GetAll");
-      vehicles = v.recordset.map((x) => ({ value: x.VehicleCode, label: x.VehicleName }));
+      const v = await pool.request().query(
+        "Select VehicleCode, VehicleName, RegistrationNumber from vw_Vehicle " +
+          "where VehicleTypeCode = 1 order by VehicleName"
+      );
+      vehicles = v.recordset.map((x) => ({
+        value: x.VehicleCode, label: x.VehicleName, RegistrationNumber: x.RegistrationNumber,
+      }));
     } catch (e) {
-      console.warn("WasteInvoice options: sp_Vehicle_GetAll failed", e.message);
+      console.warn("WasteInvoice options: vw_Vehicle failed, falling back to sp_Vehicle_GetAll", e.message);
+      try {
+        const v = await pool.request().input("Status", sql.Int, 1).execute("sp_Vehicle_GetAll");
+        vehicles = v.recordset.map((x) => ({ value: x.VehicleCode, label: x.VehicleName }));
+      } catch (e2) {
+        console.warn("WasteInvoice options: sp_Vehicle_GetAll fallback failed", e2.message);
+      }
     }
 
     // Settings flags used by the desktop Calc()/save.
