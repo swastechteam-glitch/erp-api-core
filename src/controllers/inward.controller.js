@@ -1042,7 +1042,9 @@ export const getDirectRequisitions = async (req, res) => {
       .execute("sp_PurchaseOrderReceived_WithoutPO_GetItemRequisition");
     const data = (result.recordset || []).map((r) => ({
       value: toInt(r.ItemRequisitionCode),
-      label: r.strIRNo ?? r.ItemRequisitionNo ?? "",
+      label: r.strItemRequisitionNo ?? r.strIRNo ?? r.ItemRequisitionNo ?? "",
+      ItemRequisitionNo: r.strItemRequisitionNo ?? r.strIRNo ?? r.ItemRequisitionNo ?? "",
+      ItemRequisitionDate: r.ItemRequisitionDate ?? null,
     }));
     return sendSuccess(res, data);
   } catch (err) {
@@ -1113,14 +1115,25 @@ export const getDirectItems = async (req, res) => {
       .input("Stock", sql.Int, 0)
       .input("Status", sql.Int, 1)
       .execute("sp_Item_GetbyItemName");
+    // Full item shape so the multi-column ITEM_COLUMNS dropdown (Item ID / UOM /
+    // Stock / Stock Value / Part No / Catalogue No / Drawing No / HSN Code) and
+    // the on-select autofill both populate (mirrors purchaseOrder.getOptionsDirect).
     const data = (result.recordset || []).map((r) => ({
       value: toInt(r.ItemCode),
       label: r.ItemName ?? "",
       ItemID: r.ItemID ?? "",
-      PartNumber: r.PartNumber ?? "",
-      TaxCode: toInt(r.TaxCode),
-      TaxPer: toNum(r.Tax ?? r.TaxPer),
+      PartNo: r.Partnumber ?? r.PartNo ?? "",
+      ItemUomCode: toInt(r.ItemUomCode),
+      ItemUomName: r.ItemUomName ?? r.ItemUOMName ?? "",
+      Stock: toNum(r.Stock),
+      StockValue: toNum(r.StockValue),
+      CatalogueNo: r.CatalogueNo ?? r.CatalogNo ?? "",
+      DrawingNo: r.DrawingNo ?? r.DrawingNumber ?? "",
+      HSNCode: r.HSNCode ?? r.HSNNo ?? r.HSN ?? "",
       PurchaseCost: toNum(r.PurchaseCost),
+      TaxCode: toInt(r.TaxCode),
+      TaxName: r.TaxName ?? "",
+      TaxPer: toNum(r.Tax ?? r.TaxPer),
       ItemCategoryName: r.ItemCategoryName ?? "",
     }));
     return sendSuccess(res, data);
