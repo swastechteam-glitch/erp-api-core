@@ -8,8 +8,24 @@
 
 import {
   runReport, buildPage, tableLayout, colors,
-  dec, str, fmt, ddmmyyyy, chartFromRows
+  dec, str, fmt, ddmmyyyy, chartFromRows, sql
 } from '../cotton/_common.js';
+import { getPool } from '../../../config/dynamicDB.js';
+
+// Port of the WinForms Branch combo. sp_PowerFailure_GetAll also accepts an
+// optional @BranchCode (the VB only passed it when a branch was picked). We bind
+// it only when a branch is actually selected, so the default all-branches call
+// stays identical to before.
+const powerFailureParams = (p, req) => {
+  const params = {
+    CompanyCode: { type: sql.Int, value: parseInt(p.CompanyCode) || 0 },
+    FromDate: { type: sql.DateTime, value: p.FromDate ? new Date(p.FromDate) : null },
+    ToDate: { type: sql.DateTime, value: p.ToDate ? new Date(p.ToDate) : null }
+  };
+  const branch = parseInt(req.query.BranchCode, 10) || 0;
+  if (branch > 0) params.BranchCode = { type: sql.Int, value: branch };
+  return params;
+};
 
 const headRow = (cells) =>
   cells.map((t) => ({ text: t, bold: true, fillColor: colors.headerFill, color: colors.headerText, alignment: 'center', fontSize: 8 }));
@@ -67,6 +83,7 @@ function summaryPanel(rows) {
 export const powerFailureIndividual = (req, res) => runReport(req, res, {
   spName: 'sp_PowerFailure_GetAll',
   fileName: 'EBPowerFailure_Individual',
+  spParams: powerFailureParams,
   buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) => {
     const list = (rows || []).slice().sort((a, b) => {
       const d = new Date(a.PowerFailureDate) - new Date(b.PowerFailureDate);
@@ -112,6 +129,7 @@ export const powerFailureIndividual = (req, res) => runReport(req, res, {
 export const powerFailureCumulative = (req, res) => runReport(req, res, {
   spName: 'sp_PowerFailure_GetAll',
   fileName: 'EBPowerFailure_Cumulative',
+  spParams: powerFailureParams,
   buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) => {
     const groups = [...groupBy(rows || [], (r) => ddmmyyyy(r.PowerFailureDate)).entries()]
       .sort((a, b) => new Date(a[1][0].PowerFailureDate) - new Date(b[1][0].PowerFailureDate));
@@ -152,3 +170,19 @@ export const powerFailureCumulative = (req, res) => runReport(req, res, {
     });
   }
 });
+
+// GET /electrical/reports/eb-power-failure/options — Branch filter dropdown.
+// Mirrors the WinForms cmbBranch bind (all branches, ordered by name).
+export const powerFailureOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const pool = await getPool(subDbName);
+    const branches = await pool.request()
+      .query('SELECT BranchCode AS value, BranchName AS label FROM tbl_Branch ORDER BY BranchName');
+    res.json({ success: true, data: { branches: branches.recordset } });
+  } catch (err) {
+    console.error('Report Error (powerFailureOptions):', err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};

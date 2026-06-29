@@ -6,17 +6,35 @@
 
 import {
   runReport, buildPage, tableLayout, colors,
-  dec, fmt, ddmmyyyy, chartFromRows
+  dec, fmt, ddmmyyyy, chartFromRows, sql
 } from '../cotton/_common.js';
+import { getPool } from '../../../config/dynamicDB.js';
 
 const headRow = (cells) =>
   cells.map((t) => ({ text: t, bold: true, fillColor: colors.headerFill, color: colors.headerText, alignment: 'center', fontSize: 8 }));
 const zebraOf = (i) => (i % 2 === 1 ? colors.zebraFill : null);
 const totalStyle = { bold: true, color: colors.grandText, fillColor: colors.grandFill, fontSize: 9 };
 
+// Port of the WinForms Branch combo (cmbBranch). The VB only passed @FromDate /
+// @ToDate to sp_Diesel_Consumption, and added @BranchCode ONLY when a branch was
+// picked (cmbBranch.EditValue > 0). We mirror that exactly: bind @BranchCode only
+// when a branch is actually selected so the default all-branches call is identical
+// to the original report. (CompanyCode is used only for the header logo/name, not
+// the SP — matching the VB, whose executing command never received @CompanyCode.)
+const dieselParams = (p, req) => {
+  const params = {
+    FromDate: { type: sql.DateTime, value: p.FromDate ? new Date(p.FromDate) : null },
+    ToDate: { type: sql.DateTime, value: p.ToDate ? new Date(p.ToDate) : null }
+  };
+  const branch = parseInt(req.query.BranchCode, 10) || 0;
+  if (branch > 0) params.BranchCode = { type: sql.Int, value: branch };
+  return params;
+};
+
 export const dieselDateWise = (req, res) => runReport(req, res, {
   spName: 'sp_Diesel_Consumption',
   fileName: 'DieselConsumption_DateWise',
+  spParams: dieselParams,
   buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) => {
     const list = (rows || []).slice().sort((a, b) => new Date(a.DieselDate) - new Date(b.DieselDate));
 
@@ -92,3 +110,19 @@ export const dieselDateWise = (req, res) => runReport(req, res, {
     });
   }
 });
+
+// GET /electrical/reports/diesel-consumption/options — Branch filter dropdown.
+// Mirrors the WinForms cmbBranch bind (all branches, ordered by name).
+export const dieselConsumptionOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const pool = await getPool(subDbName);
+    const branches = await pool.request()
+      .query('SELECT BranchCode AS value, BranchName AS label FROM tbl_Branch ORDER BY BranchName');
+    res.json({ success: true, data: { branches: branches.recordset } });
+  } catch (err) {
+    console.error('Report Error (dieselConsumptionOptions):', err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};

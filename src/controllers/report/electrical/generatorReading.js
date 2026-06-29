@@ -9,10 +9,31 @@
 
 import {
   runReport, buildPage, tableLayout, colors,
-  dec, str, fmt, ddmmyyyy, chartFromRows
+  dec, str, fmt, ddmmyyyy, chartFromRows, sql
 } from '../cotton/_common.js';
+import { getPool } from '../../../config/dynamicDB.js';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+// ---- functional filters (port of the WinForms DataTable.Select chain) -------
+// The VB passed @BranchCode to the SP and narrowed the recordset in memory by
+// MachineCode / GeneratorMachineGroupCode. The recordset carries all three
+// columns, so we filter all three client-side (camelCase query params,
+// comma-separated codes), exactly like the sibling compressor report.
+const codeSet = (v) => {
+  if (v === undefined || v === null || v === '') return null;
+  const s = new Set(String(v).split(',').map((x) => parseInt(x, 10)).filter((n) => !Number.isNaN(n)));
+  return s.size ? s : null;
+};
+const oneFilter = (rows, field, set) =>
+  (!set || !rows.length || !(field in rows[0])) ? rows : rows.filter((r) => set.has(parseInt(r[field], 10)));
+const filterRows = (rows, query = {}) => {
+  let out = rows || [];
+  out = oneFilter(out, 'BranchCode', codeSet(query.branchCode));
+  out = oneFilter(out, 'GeneratorMachineGroupCode', codeSet(query.generatorMachineGroupCode));
+  out = oneFilter(out, 'MachineCode', codeSet(query.machineCode));
+  return out;
+};
 const headRow = (cells) =>
   cells.map((t) => ({ text: t, bold: true, fillColor: colors.headerFill, color: colors.headerText, alignment: 'center', fontSize: 8 }));
 const groupRowNode = (label, span) =>
@@ -40,8 +61,8 @@ const cum = (r) => dec(r, 'RunHours') + dec(r, 'CurrentRunHours');
 export const generatorDateWise = (req, res) => runReport(req, res, {
   spName: 'sp_GeneratorReadingDetails_GetAll',
   fileName: 'GeneratorReading_DateWise',
-  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) => {
-    const list = (rows || []).slice().sort((a, b) => (new Date(a.GRDate) - new Date(b.GRDate)) || (dec(a, 'GRCode') - dec(b, 'GRCode')));
+  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate, query }) => {
+    const list = filterRows(rows, query).slice().sort((a, b) => (new Date(a.GRDate) - new Date(b.GRDate)) || (dec(a, 'GRCode') - dec(b, 'GRCode')));
     const cols = [
       { header: 'S.No', width: 28, align: 'center', value: (r, i) => String(i + 1) },
       { header: 'Machine', width: '*', align: 'left', value: (r) => str(r, 'MachineName') },
@@ -85,7 +106,8 @@ export const generatorDateWise = (req, res) => runReport(req, res, {
 export const generatorMonthWise = (req, res) => runReport(req, res, {
   spName: 'sp_GeneratorReadingDetails_GetAll',
   fileName: 'GeneratorReading_MonthWise',
-  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate }) => {
+  buildDocDefinition: ({ rows, companyName, companyLogo, fromDate, toDate, query }) => {
+    rows = filterRows(rows, query);
     const cols = ['Month', 'KWH', 'Diesel LTR', 'UPL KWH', 'Run Hours', 'Cur Run HR', 'Cum Run HR'];
     const span = cols.length;
     const body = [headRow(cols)];
@@ -154,3 +176,30 @@ export const generatorMonthWise = (req, res) => runReport(req, res, {
     return buildPage({ companyName, companyLogo, title: 'GENERATOR RUN DETAILS - MONTH WISE', fromDate, toDate, tables: [...chart, table] });
   }
 });
+
+// GET /electrical/reports/generator-reading/options — filter dropdowns
+// (Branch / M.Group Name / Machine). Mirrors the WinForms Bind_Data combos;
+// machines are restricted to generators (MachineName LIKE '%Generator%').
+export const generatorReadingOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const pool = await getPool(subDbName);
+    const [branches, generatorGroups, machines] = await Promise.all([
+      pool.request().query('SELECT BranchCode AS value, BranchName AS label FROM tbl_Branch ORDER BY BranchName'),
+      pool.request().query('SELECT GeneratorMachineGroupCode AS value, GeneratorMachineGroupName AS label FROM tbl_GeneratorMachineGroup ORDER BY GeneratorMachineGroupName'),
+      pool.request().query("SELECT MachineCode AS value, MachineName AS label FROM tbl_Machine WHERE MachineName LIKE '%Generator%' ORDER BY MachineName")
+    ]);
+    res.json({
+      success: true,
+      data: {
+        branches: branches.recordset,
+        generatorGroups: generatorGroups.recordset,
+        machines: machines.recordset
+      }
+    });
+  } catch (err) {
+    console.error('Report Error (generatorReadingOptions):', err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};
