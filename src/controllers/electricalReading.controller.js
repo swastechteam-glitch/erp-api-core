@@ -217,6 +217,27 @@ const saveDoc = async (req, res, cfg) => {
 // =========================================================================
 export const deptPreload = preload("sp_DepartmentwiseConsumption_PreLoad");
 export const deptList = listView("vw_DepartmentwiseConsumption", "DWCCode");
+// Department-wise screen meta: the last saved reading date (so the entry date
+// can default to the next day and be bounded) and the financial-year end date
+// (the maximum selectable date). Mirrors the WinForms dtpDWLasteDate /
+// FYMaxDate setup. FYEnd is decoded from the JWT by the auth middleware.
+export const deptMeta = async (req, res) => {
+  try {
+    if (!req.headers.subdbname) return sendError(res, "Missing subDBName", 400);
+    const pool = await getPool(req.headers.subdbname);
+    const r = await pool
+      .request()
+      .input("C", sql.Int, cc(req))
+      .query("SELECT MAX(DWCDate) AS LastEntryDate FROM tbl_DepartmentwiseConsumption WHERE CompanyCode=@C");
+    return sendSuccess(res, {
+      lastEntryDate: r.recordset?.[0]?.LastEntryDate || null,
+      fyMaxDate: req.headers.FYEnd || null,
+    });
+  } catch (err) {
+    console.error("DB Error (deptMeta):", err);
+    return sendError(res, err);
+  }
+};
 export const deptOne = oneWithDetails("vw_DepartmentwiseConsumption", "DWCCode", "vw_DepartmentwiseConsumptionDetails", "DWCCode");
 export const deptDelete = remover("sp_DepartmentwiseConsumption_Delete", "DWCCode");
 export const deptSave = (req, res) =>
