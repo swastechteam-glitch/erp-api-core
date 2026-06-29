@@ -186,6 +186,15 @@ import inwardRouter from "./inwardRoutes.js";
 import purchaseReturnRouter from "./purchaseReturnRoutes.js";
 import purchaseOrderPrintRouter from "./purchaseOrderPrintRoutes.js";
 import gstRouter from "./gstRoutes.js";
+import companyVisitorsRouter from "./companyVisitorsRoutes.js";
+import vehicleInOutRouter from "./vehicleInOutRoutes.js";
+import gradeRouter from "./gradeRoutes.js";
+import employmentRouter from "./employmentRoutes.js";
+import payHeadRouter from "./payHeadRoutes.js";
+import holidayRouter from "./holidayRoutes.js";
+import manualEntryReasonRouter from "./manualEntryReasonRoutes.js";
+import routeRouter from "./routeRoutes.js";
+import routeVehicleRouter from "./routeVehicleRoutes.js";
 
 const router = express.Router();
 
@@ -203,6 +212,15 @@ const appRoutes = () => {
   router.use("/hrm/overview", hrmOverviewRouter);
   router.use("/gate", gateRouter);
   router.use("/gate/overview", gateOverviewRouter);
+  router.use("/company-visitors", companyVisitorsRouter);
+  router.use("/vehicle-in-out", vehicleInOutRouter);
+  router.use("/grade", gradeRouter);
+  router.use("/employment", employmentRouter);
+  router.use("/pay-head", payHeadRouter);
+  router.use("/holiday", holidayRouter);
+  router.use("/manual-entry-reason", manualEntryReasonRouter);
+  router.use("/route", routeRouter);
+  router.use("/route-vehicle", routeVehicleRouter);
   router.use("/finance", financeRouter);
   router.use("/finance/overview", financeOverviewRouter);
   router.use("/bank", bankRouter);
