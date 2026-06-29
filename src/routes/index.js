@@ -185,6 +185,10 @@ import purchaseOrderRouter from "./purchaseOrderRoutes.js";
 import inwardRouter from "./inwardRoutes.js";
 import purchaseReturnRouter from "./purchaseReturnRoutes.js";
 import purchaseOrderPrintRouter from "./purchaseOrderPrintRoutes.js";
+import indentApproval1Router from "./indentApproval1Routes.js";
+import indentApproval2Router from "./indentApproval2Routes.js";
+import directIssueRouter from "./directIssueRoutes.js";
+import purchaseRequisitionApprovalRouter from "./purchaseRequisitionApprovalRoutes.js";
 import gstRouter from "./gstRoutes.js";
 
 const router = express.Router();
@@ -340,6 +344,10 @@ const appRoutes = () => {
   router.use("/inward", inwardRouter);
   router.use("/purchase-return", purchaseReturnRouter);
   router.use("/purchase-order-print", purchaseOrderPrintRouter);
+  router.use("/indent-approval-1", indentApproval1Router);
+  router.use("/indent-approval-2", indentApproval2Router);
+  router.use("/direct-issue", directIssueRouter);
+  router.use("/purchase-requisition-approval", purchaseRequisitionApprovalRouter);
   router.use("/gst", gstRouter);
   router.use("/service-order-expenses", serviceOrderExpensesRouter);
   router.use("/common-service-activity", commonServiceActivityRouter);
