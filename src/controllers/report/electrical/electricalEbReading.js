@@ -10,7 +10,7 @@
 
 import {
   runMultiReport, buildPage, tableLayout, colors,
-  dec, str, fmt
+  dec, str, fmt, sql
 } from '../cotton/_common.js';
 
 const headRow = (cells) =>
@@ -89,15 +89,38 @@ function ukgSummary(rows) {
   return [banner('UKG and Power Cost Details'), { table: { widths: ['*', 110], body }, layout: tableLayout(), margin: [0, 0, 0, 6] }];
 }
 
+// Per-proc SP params — the VB passed DIFFERENT params to each SP:
+//   • 4 snapshot SPs take @CompanyCode + @GETDATE (a single day). runMultiReport's
+//     default params (CompanyCode/FromDate/ToDate) would make these SPs throw and
+//     silently render "No data", so each needs its own builder. @GETDATE = FromDate
+//     (the chosen day); for a single-day range it matches the VB exactly.
+//   • sp_Diesel_Consumption takes @FromDate/@ToDate/@CompanyCode.
+//   • sp_EBDaysWise_Report takes @CompanyCode/@FromDate/@ToDate (the summary may
+//     therefore span a range; with FromDate=ToDate it equals the VB single day).
+const snapshotParams = (p) => ({
+  CompanyCode: { type: sql.Int, value: parseInt(p.CompanyCode) || 0 },
+  GETDATE: { type: sql.DateTime, value: p.FromDate ? new Date(p.FromDate) : null }
+});
+const dieselParams = (p) => ({
+  FromDate: { type: sql.DateTime, value: p.FromDate ? new Date(p.FromDate) : null },
+  ToDate: { type: sql.DateTime, value: p.ToDate ? new Date(p.ToDate) : null },
+  CompanyCode: { type: sql.Int, value: parseInt(p.CompanyCode) || 0 }
+});
+const ebDaysParams = (p) => ({
+  CompanyCode: { type: sql.Int, value: parseInt(p.CompanyCode) || 0 },
+  FromDate: { type: sql.DateTime, value: p.FromDate ? new Date(p.FromDate) : null },
+  ToDate: { type: sql.DateTime, value: p.ToDate ? new Date(p.ToDate) : null }
+});
+
 export const electricalEbReadingDateWise = (req, res) => runMultiReport(req, res, {
   fileName: 'ElectricalEBReading',
   procs: [
-    { key: 'powerDetails', spName: 'sp_Electrical_PowerDetails_DailyReport' },
-    { key: 'diesel', spName: 'sp_Diesel_Consumption' },
-    { key: 'powerGroup', spName: 'sp_Electrical_PowerGrouping_DailyReport' },
-    { key: 'compressor', spName: 'sp_Electrical_Compressor_DailyReport' },
-    { key: 'genset', spName: 'sp_Electrical_GenSet_DailyReport' },
-    { key: 'ebDays', spName: 'sp_EBDaysWise_Report' }
+    { key: 'powerDetails', spName: 'sp_Electrical_PowerDetails_DailyReport', spParams: snapshotParams },
+    { key: 'diesel', spName: 'sp_Diesel_Consumption', spParams: dieselParams },
+    { key: 'powerGroup', spName: 'sp_Electrical_PowerGrouping_DailyReport', spParams: snapshotParams },
+    { key: 'compressor', spName: 'sp_Electrical_Compressor_DailyReport', spParams: snapshotParams },
+    { key: 'genset', spName: 'sp_Electrical_GenSet_DailyReport', spParams: snapshotParams },
+    { key: 'ebDays', spName: 'sp_EBDaysWise_Report', spParams: ebDaysParams }
   ],
   buildDocDefinition: ({ data, companyName, companyLogo, fromDate, toDate }) => {
     const d = data || {};
@@ -149,6 +172,6 @@ export const electricalEbReadingDateWise = (req, res) => runMultiReport(req, res
     // 6) UKG + power cost summary
     tables.push(...ukgSummary(d.ebDays));
 
-    return buildPage({ companyName, companyLogo, title: 'ELECTRICAL EB READING', fromDate, toDate, tables });
+    return buildPage({ companyName, companyLogo, title: 'ELECTRICAL DAILY REPORT', fromDate, toDate, tables });
   }
 });

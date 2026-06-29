@@ -10,8 +10,31 @@
 
 import {
   runReport, buildPage, tableLayout, colors,
-  dec, str, fmt, ddmmyyyy, chartFromRows
+  dec, str, fmt, ddmmyyyy, chartFromRows, sql
 } from '../cotton/_common.js';
+import { getPool } from '../../../config/dynamicDB.js';
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+// ---- functional filters (port of the WinForms DataTable.Select chain) -------
+// The VB screen passed @BranchCode to the SP and narrowed the recordset in
+// memory by DepartmentCode / EBMeterCode. The recordset already carries all
+// three columns, so we filter all three client-side (camelCase query params,
+// comma-separated codes), exactly like the sibling compressor report.
+const codeSet = (v) => {
+  if (v === undefined || v === null || v === '') return null;
+  const s = new Set(String(v).split(',').map((x) => parseInt(x, 10)).filter((n) => !Number.isNaN(n)));
+  return s.size ? s : null;
+};
+const oneFilter = (rows, field, set) =>
+  (!set || !rows.length || !(field in rows[0])) ? rows : rows.filter((r) => set.has(parseInt(r[field], 10)));
+const filterRows = (rows, query = {}) => {
+  let out = rows || [];
+  out = oneFilter(out, 'BranchCode', codeSet(query.branchCode));
+  out = oneFilter(out, 'DepartmentCode', codeSet(query.departmentCode));
+  out = oneFilter(out, 'EBMeterCode', codeSet(query.ebMeterCode));
+  return out;
+};
 
 // ---- helpers ---------------------------------------------------------------
 function groupBy(rows, keyFn) {
@@ -99,14 +122,19 @@ function buildGrouped({ rows, columns, groupKey, groupLabel, sortFn }) {
   return { table: { headerRows: 1, widths, body }, layout: tableLayout() };
 }
 
-function makeReport({ title, columns, groupKey, groupLabel, chartGroupKey, chartGroupLabel, sortFn }) {
-  return ({ rows, companyName, companyLogo, fromDate, toDate }) => {
+function makeReport({ title, columns, groupKey, groupLabel, chartGroupKey, chartGroupLabel, sortFn, groupHeader }) {
+  return ({ rows, companyName, companyLogo, fromDate, toDate, query }) => {
+    rows = filterRows(rows, query);
+    const gh = groupHeader
+      || (title.includes('Date') ? 'Date'
+        : title.includes('Month') ? 'Month'
+        : title.includes('Power Group') ? 'Power Group' : 'Plant');
     const chart = chartFromRows(rows, {
       groupKey: chartGroupKey,
       groupLabel: chartGroupLabel,
       valueFn: (r) => dec(r, 'Difference'),
       valueHeader: 'Units (KWH)',
-      groupHeader: title.includes('Date') ? 'Date' : (title.includes('Power Group') ? 'Power Group' : 'Plant'),
+      groupHeader: gh,
       digits: 2
     });
     const table = buildGrouped({ rows, columns, groupKey, groupLabel, sortFn });
@@ -160,3 +188,52 @@ export const ebReadingPowerGroupWise = (req, res) => runReport(req, res, {
     sortFn: (a, b) => str(a, 'PlantGroupName').localeCompare(str(b, 'PlantGroupName'))
   })
 });
+
+// Month Wise — grouped by calendar month, plants/departments under each month.
+// Mirrors rptDepartmentWiseConsumption_MonthWise.rdlc (which pivots month × plant
+// summing Difference); rendered here as the same grouped table the other variants
+// use, so the screen's three radios stay visually consistent.
+const monthKey = (r) => { const d = new Date(r.DWCDate); return `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`; };
+const monthLabel = (r) => { const d = new Date(r.DWCDate); return `Month : ${MONTHS[d.getMonth()] || ''} ${d.getFullYear()}`; };
+export const ebReadingMonthWise = (req, res) => runReport(req, res, {
+  spName: 'sp_DepartmentwiseConsumptionDetails_GetAll',
+  fileName: 'DepartmentEBReading_MonthWise',
+  buildDocDefinition: makeReport({
+    title: 'POWER CONSUMPTION - MONTH WISE',
+    columns: [C.sno, C.plant, C.dept, C.units],
+    groupKey: monthKey,
+    groupLabel: monthLabel,
+    chartGroupKey: monthKey,
+    chartGroupLabel: monthLabel,
+    groupHeader: 'Month',
+    sortFn: (a, b) => new Date(a.DWCDate) - new Date(b.DWCDate)
+  })
+});
+
+// GET /electrical/reports/department-eb-reading/options — filter dropdowns
+// (Branch / Department / EBMeter). Mirrors the WinForms Bind_Data combos. No
+// CompanyCode filter on tbl_Branch (the subDB is already company-scoped, and the
+// options request carries no CompanyCode), matching the diesel/power-failure ports.
+export const departmentEbReadingOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const pool = await getPool(subDbName);
+    const [branches, departments, ebMeters] = await Promise.all([
+      pool.request().query('SELECT BranchCode AS value, BranchName AS label FROM tbl_Branch ORDER BY BranchName'),
+      pool.request().query('SELECT DepartmentCode AS value, DepartmentName_English AS label FROM tbl_Department ORDER BY DepartmentName_English'),
+      pool.request().query('SELECT EBMeterCode AS value, EBMeterName AS label FROM tbl_EBMeterMaster ORDER BY EBMeterName')
+    ]);
+    res.json({
+      success: true,
+      data: {
+        branches: branches.recordset,
+        departments: departments.recordset,
+        ebMeters: ebMeters.recordset
+      }
+    });
+  } catch (err) {
+    console.error('Report Error (departmentEbReadingOptions):', err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};
