@@ -1,7 +1,7 @@
 import express from "express";
 import {
   getOptions,
-  deptPreload, deptList, deptOne, deptSave, deptDelete,
+  deptPreload, deptMeta, deptList, deptOne, deptSave, deptDelete,
   slotPreload, slotList, slotOne, slotSave, slotDelete,
   dayList, dayOne, daySave, dayDelete,
   solarPreload, solarList, solarOne, solarSave, solarDelete,
@@ -17,6 +17,7 @@ router.get("/options", authenticate, getOptions);
 
 // Department Wise
 router.get("/dept/preload", authenticate, deptPreload);
+router.get("/dept/meta", authenticate, deptMeta);
 router.get("/dept/list", authenticate, deptList);
 router.get("/dept/:code", authenticate, deptOne);
 router.post("/dept/save", authenticate, deptSave);
