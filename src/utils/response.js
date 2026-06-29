@@ -29,13 +29,17 @@ export const dbErrorMessage = (error) => {
   return parts.filter(Boolean).join("; ");
 };
 
-// Error payload.
-export const sendError = (res, error = "Something went wrong", status = 500) => {
+// Error payload. `extra` (optional) merges extra fields into the JSON body —
+// e.g. { field: "vehicleNo" } for structured client-side field errors. Existing
+// 3-arg callers are unaffected.
+export const sendError = (res, error = "Something went wrong", status = 500, extra = null) => {
   const message =
     typeof error === "string"
       ? error
       : dbErrorMessage(error) || "Something went wrong";
-  return res.status(status).json({ success: false, error: message });
+  return res
+    .status(status)
+    .json({ success: false, error: message, ...(extra && typeof extra === "object" ? extra : {}) });
 };
 
 // Paginated list payload. Pass the FULL list; slicing is done here.
