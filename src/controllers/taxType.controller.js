@@ -141,7 +141,8 @@ const saveOrUpdateTaxType = async (req, res, isEdit) => {
     request.input("FabricCharge", sql.Decimal(18, 3), toNum(body.FabricCharge));
     request.input("PackingCharges", sql.Decimal(18, 3), toNum(body.PackingCharges));
     request.input("PackingChargesQtyKgs", sql.Int, toInt(body.PackingChargesQtyKgs));
-    request.input("Status", sql.Bit, toBit(body.Status));
+    // Default to ACTIVE when Status is omitted (VB combo defaults to ACTIVE).
+    request.input("Status", sql.Bit, body.Status === undefined ? 1 : toBit(body.Status));
 
     await request.execute("sp_TaxType_AddEdit");
 

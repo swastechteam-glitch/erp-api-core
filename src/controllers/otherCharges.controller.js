@@ -113,7 +113,8 @@ const saveOrUpdateOtherCharges = async (req, res, isEdit) => {
     request.input("OtherCharges", sql.NVarChar, otherCharges);
     request.input("PerKg", sql.Bit, toBit(body.PerKg));
     request.input("Amount", sql.Decimal(18, 2), toNum(body.Amount));
-    request.input("Status", sql.Bit, toBit(body.Status));
+    // Default to ACTIVE when Status is omitted (VB combo defaults to ACTIVE).
+    request.input("Status", sql.Bit, body.Status === undefined ? 1 : toBit(body.Status));
 
     await request.execute("sp_OtherCharges_AddEdit");
 
