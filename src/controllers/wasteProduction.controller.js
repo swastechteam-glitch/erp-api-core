@@ -40,7 +40,6 @@ const toBit = (v) => {
 const round3 = (n) => Math.round((toNum(n) + Number.EPSILON) * 1000) / 1000;
 const getCompanyCode = (req) => toInt(req.headers.companyCode);
 const getFYCode = (req) => toInt(req.headers.FYCode);
-const todayStr = () => new Date().toISOString().slice(0, 10);
 
 // Hard flag for the bale-number generator (tbl_Setting.WasteBaleNo = 1).
 const getHard = async (pool) => {
@@ -134,33 +133,48 @@ const decorate = (row) => ({
   id: row.WasteBaleCode,
 });
 
-// GET /waste-production/lists  -> sp_WasteStock_GetByWasteProductionDate (filtered + paginated)
+// GET /waste-production/lists
+// Sourced from sp_WasteStock_GetAll — the SAME proc the WinForms Edit/Delete grid
+// (frmWasteProductionDetails) binds to — so every row carries WasteBaleCode, which
+// Edit/Delete need (sp_WasteStock_GetByWasteProductionDate omits it, which made
+// Edit/Delete hit /…/undefined → "Invalid WasteBaleCode"). The From/To/Waste/
+// Opening filters + pagination are applied here.
 export const getList = async (req, res) => {
   try {
     if (!req.headers.subdbname) return sendError(res, "Missing subDBName", 400);
     const pool = await getPool(req.headers.subdbname);
 
-    const fromDate = req.query.fromDate || todayStr();
-    const toDate = req.query.toDate || todayStr();
     const wasteItemCode = toInt(req.query.wasteItemCode);
     const opening = toBit(req.query.opening);
+    const dayOf = (d) => {
+      const x = new Date(d);
+      if (Number.isNaN(x.getTime())) return null;
+      x.setHours(0, 0, 0, 0);
+      return x.getTime();
+    };
+    const fromTs = req.query.fromDate ? dayOf(req.query.fromDate) : null;
+    const toTs = req.query.toDate ? dayOf(req.query.toDate) : null;
 
-    const request = pool
+    const result = await pool
       .request()
       .input("CompanyCode", sql.Int, getCompanyCode(req))
-      .input("FromDate", sql.DateTime, new Date(fromDate))
-      .input("ToDate", sql.DateTime, new Date(toDate))
-      .input("Opening", sql.Bit, opening);
-    // @WasteItemCode is nullable in the proc — pass NULL for "All".
-    request.input(
-      "WasteItemCode",
-      sql.Int,
-      wasteItemCode > 0 ? wasteItemCode : null
-    );
+      .input("FYCode", sql.Int, getFYCode(req))
+      .execute("sp_WasteStock_GetAll");
 
-    const result = await request.execute("sp_WasteStock_GetByWasteProductionDate");
-    const data = result.recordset.map(decorate);
-    return sendPaginated(res, data, req.query);
+    const rows = (result.recordset || []).filter((r) => {
+      if (fromTs != null || toTs != null) {
+        const ts = dayOf(r.WasteProductionDate);
+        if (ts == null) return false;
+        if (fromTs != null && ts < fromTs) return false;
+        if (toTs != null && ts > toTs) return false;
+      }
+      if (wasteItemCode > 0 && Number(r.WasteItemCode) !== wasteItemCode) return false;
+      // Opening filter only narrows when explicitly asked for (opening=1).
+      if (opening === 1 && toBit(r.Opening) !== 1) return false;
+      return true;
+    });
+
+    return sendPaginated(res, rows.map(decorate), req.query);
   } catch (err) {
     console.error("DB Error (getList WasteProduction):", err);
     return sendError(res, err);
@@ -344,18 +358,18 @@ export const deleteWasteProduction = async (req, res) => {
     const companyCode = getCompanyCode(req);
 
     // Guards mirror frmWasteProductionDetails: a bale already in a Waste DC or a
-    // Waste Invoice cannot be deleted.
+    // Waste Invoice cannot be deleted. These detail tables are keyed by
+    // WasteBaleCode (a global PK) and have no CompanyCode column — matching how
+    // they're queried everywhere else (e.g. wasteDC.controller).
     const [dc, inv] = await Promise.all([
       pool
         .request()
-        .input("CompanyCode", sql.Int, companyCode)
         .input("WasteBaleCode", sql.Int, code)
-        .query("Select 1 from tbl_WasteDCDetails where CompanyCode = @CompanyCode AND WasteBaleCode = @WasteBaleCode"),
+        .query("Select 1 from tbl_WasteDCDetails where WasteBaleCode = @WasteBaleCode"),
       pool
         .request()
-        .input("CompanyCode", sql.Int, companyCode)
         .input("WasteBaleCode", sql.Int, code)
-        .query("Select 1 from tbl_WasteInvoice_BaleDetails where CompanyCode = @CompanyCode AND WasteBaleCode = @WasteBaleCode"),
+        .query("Select 1 from tbl_WasteInvoice_BaleDetails where WasteBaleCode = @WasteBaleCode"),
     ]);
     if (dc.recordset.length)
       return sendError(res, "This Bale Already DC Entry", 409);

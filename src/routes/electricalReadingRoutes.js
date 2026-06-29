@@ -2,7 +2,7 @@ import express from "express";
 import {
   getOptions,
   deptPreload, deptMeta, deptList, deptOne, deptSave, deptDelete,
-  slotPreload, slotList, slotOne, slotSave, slotDelete,
+  slotPreload, slotMeta, slotList, slotOne, slotSave, slotDelete,
   dayList, dayOne, daySave, dayDelete,
   solarPreload, solarList, solarOne, solarSave, solarDelete,
   gensetList, gensetOne, gensetSave, gensetDelete,
@@ -25,6 +25,7 @@ router.delete("/dept/:code", authenticate, deptDelete);
 
 // Slot Wise
 router.get("/slot/preload", authenticate, slotPreload);
+router.get("/slot/meta", authenticate, slotMeta);
 router.get("/slot/list", authenticate, slotList);
 router.get("/slot/:code", authenticate, slotOne);
 router.post("/slot/save", authenticate, slotSave);
