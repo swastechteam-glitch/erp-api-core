@@ -245,9 +245,9 @@ export const clientDBConfig = {
   TPN2: {
     user: "sa",
     password: "@dmin1305",
-    server: "103.207.14.68",
+    server: "61.2.74.74",
     port: 16000,
-    database: "SwasERP_Thenpandian",
+    database: "SwasERP_ThenpandianU2",
   },
 
   SKT: {

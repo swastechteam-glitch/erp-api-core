@@ -77,9 +77,10 @@ const allowedOrigins = [
   "https://swasinfotechnologies.cloud",
   "https://lp3vbxbr-3000.inc1.devtunnels.ms",
   "https://dev.swasinfotechnologies.cloud",
+  "https://tpn2.swasinfotechnologies.cloud"
   // "http://localhost:3000",
   // "http://localhost:3001",
-  "http://192.168.1.12:3000",
+  // "http://192.168.1.12:3000",
   // "http://192.168.1.5:3000",
   // "http://localhost:8000"
 ];
