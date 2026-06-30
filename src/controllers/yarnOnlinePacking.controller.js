@@ -76,14 +76,36 @@ export const getCounts = async (req, res) => {
     const date = D(req.query.date) || new Date();
 
     await ensureFixing(pool, companyCode, fyCode, date);
-    const [countRows, boxRs] = await Promise.all([
+    const [countRows, boxRs, scaleRs] = await Promise.all([
       loadCounts(pool, companyCode, date),
       pool.request().execute("sp_BoxPacking_GetAll"),
+      // Scale Details panel + weigh-scale connection list. The scale IP/port
+      // live in tbl_Scale (infra config), so read them from there directly; the
+      // CountType column shows which count is fixed to the scale today (if any).
+      pool
+        .request()
+        .input("CompanyCode", sql.Int, companyCode)
+        .input("FixingDate", sql.DateTime, date)
+        .query(
+          "SELECT s.ScaleCode, s.ScaleName, s.ScaleIP, s.PortName, " +
+            "(SELECT TOP 1 f.ShortName FROM vw_YarnFixing f " +
+            " WHERE f.ScaleCode = s.ScaleCode AND f.CompanyCode = @CompanyCode " +
+            " AND CAST(f.FixingDate AS DATE) = CAST(@FixingDate AS DATE)) AS CountType " +
+            "FROM tbl_Scale s WHERE ISNULL(s.Status, 1) = 1 ORDER BY s.ScaleName"
+        ),
     ]);
 
     const counts = countRows.map((r) => ({ ...r, value: r.CountTypeCode, label: r.ShortName ?? r.CountType }));
     const boxPackings = (boxRs.recordset || []).map((r) => ({ ...r, value: r.BoxPackingCode, label: r.BoxPackingName }));
-    return sendSuccess(res, { counts, boxPackings });
+    const scaleDetails = (scaleRs.recordset || []).map((r, i) => ({
+      id: i + 1,
+      CountType: str(r.CountType),
+      ScaleCode: toInt(r.ScaleCode),
+      ScaleName: str(r.ScaleName),
+      ScaleIP: str(r.ScaleIP),
+      Port: str(r.PortName),
+    }));
+    return sendSuccess(res, { counts, boxPackings, scaleDetails });
   } catch (err) {
     console.error("DB Error (YarnOnlinePacking.getCounts):", err);
     return sendError(res, err);

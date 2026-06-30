@@ -600,6 +600,8 @@ export function renderGroupedReport({ rows, cfg, companyName, companyLogo, fromD
 // `spParams` (optional) returns an object of { paramName: { type, value } } for the SP.
 // Defaults to CompanyCode / FromDate / ToDate which covers most reports.
 export async function runReport(req, res, { spName, fileName, buildDocDefinition, spParams }) {
+  console.log(req.query, 'qury params check');
+  
   const t0 = Date.now();
   try {
     const subDbName = req.headers.subdbname;
