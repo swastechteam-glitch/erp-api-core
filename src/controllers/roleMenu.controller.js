@@ -34,6 +34,55 @@ const getUserRoleRow = async (pool, userCode) => {
   return r.recordset[0] || null;
 };
 
+// ── Hard-coded owner super admins (temporary) ───────────────────────────────
+// These accounts ALWAYS get full Role Access (treated as super admin) no matter
+// what role — if any — they're assigned. Requested for the SWASTEAM owner logins
+// (UserCode 1 and 6). Remove these once a real Super Admin role is assigned via
+// the Role Access screen. NOTE: the UserCode check is per-database, so in a
+// multi-tenant DB whoever holds UserCode 1/6 there also passes — the UName check
+// keeps it scoped to the actual owner account.
+const FORCE_SUPER_ADMIN_USER_CODES = [1, 6];
+const FORCE_SUPER_ADMIN_UNAMES = ["SWASTEAM"];
+
+const isForcedSuperAdmin = async (pool, userCode) => {
+  if (FORCE_SUPER_ADMIN_USER_CODES.includes(userCode)) return true;
+  try {
+    const r = await pool
+      .request()
+      .input("UserCode", sql.Int, userCode)
+      .query(`SELECT TOP 1 UName FROM dbo.vw_User WHERE UserCode = @UserCode`);
+    const uname = (r.recordset[0]?.UName || "").toString().trim().toUpperCase();
+    return FORCE_SUPER_ADMIN_UNAMES.includes(uname);
+  } catch {
+    return false; // user view missing / not configured -> fall through to role check
+  }
+};
+
+// Lazy migration: make sure the per-menu Add/Edit/Delete columns exist. Databases
+// set up before this feature won't have them — add them on first use so the app
+// self-heals (no manual SQL run). Idempotent, cached per subDB, and a no-op when
+// the RBAC tables aren't deployed yet (handled as "not configured" elsewhere).
+const _actionColsReady = new Set();
+const ensureActionColumns = async (pool, subdbname) => {
+  if (_actionColsReady.has(subdbname)) return;
+  try {
+    await pool.request().query(`
+      IF COL_LENGTH('dbo.tbl_web_RoleMenu','CanAdd')    IS NULL ALTER TABLE dbo.tbl_web_RoleMenu ADD CanAdd    BIT NOT NULL CONSTRAINT DF_webRoleMenu_CanAdd    DEFAULT (1);
+      IF COL_LENGTH('dbo.tbl_web_RoleMenu','CanEdit')   IS NULL ALTER TABLE dbo.tbl_web_RoleMenu ADD CanEdit   BIT NOT NULL CONSTRAINT DF_webRoleMenu_CanEdit   DEFAULT (1);
+      IF COL_LENGTH('dbo.tbl_web_RoleMenu','CanDelete') IS NULL ALTER TABLE dbo.tbl_web_RoleMenu ADD CanDelete BIT NOT NULL CONSTRAINT DF_webRoleMenu_CanDelete DEFAULT (1);
+      IF COL_LENGTH('dbo.tbl_web_UserMenu','CanAdd')    IS NULL ALTER TABLE dbo.tbl_web_UserMenu ADD CanAdd    BIT NOT NULL CONSTRAINT DF_webUserMenu_CanAdd    DEFAULT (1);
+      IF COL_LENGTH('dbo.tbl_web_UserMenu','CanEdit')   IS NULL ALTER TABLE dbo.tbl_web_UserMenu ADD CanEdit   BIT NOT NULL CONSTRAINT DF_webUserMenu_CanEdit   DEFAULT (1);
+      IF COL_LENGTH('dbo.tbl_web_UserMenu','CanDelete') IS NULL ALTER TABLE dbo.tbl_web_UserMenu ADD CanDelete BIT NOT NULL CONSTRAINT DF_webUserMenu_CanDelete DEFAULT (1);
+    `);
+    _actionColsReady.add(subdbname);
+  } catch (err) {
+    // Tables not deployed yet (notConfigured) -> handled elsewhere; don't cache
+    // so a later call (after the one-time setup) retries the column add.
+    if (err?.number === 208 || /Invalid object name/i.test(err?.message || "")) return;
+    throw err;
+  }
+};
+
 // First-run bootstrap: true when NO user is mapped to a super-admin role yet.
 // While true, any authenticated user is treated as super admin so the very
 // first user can configure access. It auto-locks the moment a super admin is
@@ -60,6 +109,11 @@ export const requireSuperAdmin = async (req, res, next) => {
     const userId = parseInt(req.headers.userId);
     if (!userId) return sendError(res, "Missing user context", 400);
     const pool = await getPool(req.headers.subdbname);
+    // Self-heal the A/E/D columns before any role-access write/read runs (this
+    // guard wraps every super-admin endpoint).
+    await ensureActionColumns(pool, req.headers.subdbname);
+    // Owner accounts (SWASTEAM / UserCode 1, 6) always pass.
+    if (await isForcedSuperAdmin(pool, userId)) return next();
     const role = await getUserRoleRow(pool, userId);
     if (role?.IsSuperAdmin) return next();
     // Bootstrap window: nobody is a super admin yet -> let the first user in.
@@ -71,27 +125,41 @@ export const requireSuperAdmin = async (req, res, next) => {
   }
 };
 
-// Direct per-user menu keys (tbl_UserMenu). Returns [] when the user has no
-// direct assignment, or null if the table isn't deployed yet (so callers can
-// fall back to role menus instead of failing).
-const getUserMenuKeys = async (pool, userCode) => {
+// Direct per-user menu grants (tbl_web_UserMenu) with their A/E/D flags. Returns
+// [] when the user has no direct assignment, or null if the table isn't deployed
+// yet (so callers can fall back to role menus instead of failing).
+const getUserMenuRows = async (pool, userCode) => {
   try {
     const r = await pool
       .request()
       .input("UserCode", sql.Int, userCode)
       .query(`
-        SELECT m.MenuKey
+        SELECT m.MenuKey, um.CanAdd, um.CanEdit, um.CanDelete
         FROM dbo.tbl_web_UserMenu um
         JOIN dbo.tbl_web_Menu m ON m.MenuCode = um.MenuCode AND m.Status = 1
         WHERE um.UserCode = @UserCode
       `);
-    return r.recordset.map((m) => m.MenuKey);
+    return r.recordset.map((m) => ({
+      MenuKey: m.MenuKey,
+      CanAdd: !!m.CanAdd,
+      CanEdit: !!m.CanEdit,
+      CanDelete: !!m.CanDelete,
+    }));
   } catch (err) {
     if (err?.number === 208 || /Invalid object name/i.test(err?.message || "")) {
       return null; // table not created yet -> fall back to role menus
     }
     throw err;
   }
+};
+
+// Build the per-menu action map the web app enforces:  { key: {add,edit,del} }.
+const toActions = (rows) => {
+  const a = {};
+  rows.forEach((m) => {
+    a[m.MenuKey] = { add: !!m.CanAdd, edit: !!m.CanEdit, del: !!m.CanDelete };
+  });
+  return a;
 };
 
 // ── GET /role-access/my-menus  (any authenticated user) ─────────────────────
@@ -102,54 +170,74 @@ export const getMyMenus = async (req, res) => {
     if (!userId) return sendError(res, "Missing user context", 400);
 
     const pool = await getPool(req.headers.subdbname);
+    await ensureActionColumns(pool, req.headers.subdbname);
     const role = await getUserRoleRow(pool, userId);
 
-    // Super admin (or first-run bootstrap) sees every menu.
-    const bootstrap = !role?.IsSuperAdmin && (await isBootstrapMode(pool)) === true;
-    if (role?.IsSuperAdmin || bootstrap) {
+    // Owner accounts (SWASTEAM / UserCode 1, 6) get full super-admin access.
+    const forced = await isForcedSuperAdmin(pool, userId);
+
+    // Super admin, owner account, or first-run bootstrap sees every menu.
+    const bootstrap =
+      !role?.IsSuperAdmin && !forced && (await isBootstrapMode(pool)) === true;
+    if (role?.IsSuperAdmin || forced || bootstrap) {
       const all = await pool
         .request()
         .query(`SELECT MenuKey FROM dbo.tbl_web_Menu WHERE Status = 1`);
       return sendSuccess(res, {
-        roleName: role?.RoleName || (bootstrap ? "Bootstrap Admin" : ""),
+        roleName:
+          role?.RoleName ||
+          (forced ? "Super Admin" : bootstrap ? "Bootstrap Admin" : ""),
         isSuperAdmin: true,
         bootstrap,
         menuKeys: all.recordset.map((m) => m.MenuKey),
       });
     }
 
-    // Direct per-user menus OVERRIDE the role when present.
-    const userMenuKeys = await getUserMenuKeys(pool, userId);
-    if (userMenuKeys && userMenuKeys.length) {
-      return sendSuccess(res, {
-        roleName: role?.RoleName || "",
-        isSuperAdmin: false,
-        menuKeys: userMenuKeys,
-      });
-    }
+    // A user's effective menus = the ROLE's menus (baseline) PLUS any direct
+    // per-user menus (extras). Direct menus only ADD / override flags now — they
+    // can no longer HIDE the role's menus, which used to silently break role-based
+    // rollout (a user with leftover direct menus saw those instead of the role).
+    const userRows = (await getUserMenuRows(pool, userId)) || [];
 
-    // Fall back to the user's role menus (or nothing if no role).
-    if (!role) {
+    // Nothing assigned at all (no role AND no direct menus) -> no access yet.
+    if (!role && !userRows.length) {
       return sendSuccess(
         res,
-        { roleName: "", isSuperAdmin: false, menuKeys: [] },
+        { roleName: "", isSuperAdmin: false, noRole: true, menuKeys: [] },
         "No role assigned"
       );
     }
 
-    const menus = await pool
-      .request()
-      .input("RoleCode", sql.Int, role.RoleCode)
-      .query(`
-        SELECT m.MenuKey
-        FROM dbo.tbl_web_RoleMenu rm
-        JOIN dbo.tbl_web_Menu m ON m.MenuCode = rm.MenuCode AND m.Status = 1
-        WHERE rm.RoleCode = @RoleCode
-      `);
+    let roleRows = [];
+    if (role) {
+      const menus = await pool
+        .request()
+        .input("RoleCode", sql.Int, role.RoleCode)
+        .query(`
+          SELECT m.MenuKey, rm.CanAdd, rm.CanEdit, rm.CanDelete
+          FROM dbo.tbl_web_RoleMenu rm
+          JOIN dbo.tbl_web_Menu m ON m.MenuCode = rm.MenuCode AND m.Status = 1
+          WHERE rm.RoleCode = @RoleCode
+        `);
+      roleRows = menus.recordset.map((m) => ({
+        MenuKey: m.MenuKey,
+        CanAdd: !!m.CanAdd,
+        CanEdit: !!m.CanEdit,
+        CanDelete: !!m.CanDelete,
+      }));
+    }
+
+    // Merge: role first (baseline), then direct user rows override per-menu flags.
+    const mergedMap = new Map();
+    roleRows.forEach((r) => mergedMap.set(r.MenuKey, r));
+    userRows.forEach((r) => mergedMap.set(r.MenuKey, r));
+    const merged = Array.from(mergedMap.values());
+
     return sendSuccess(res, {
-      roleName: role.RoleName,
+      roleName: role?.RoleName || "",
       isSuperAdmin: false,
-      menuKeys: menus.recordset.map((m) => m.MenuKey),
+      menuKeys: merged.map((m) => m.MenuKey),
+      actions: toActions(merged),
     });
   } catch (err) {
     // If the RBAC tables don't exist yet (feature not deployed), don't break the
@@ -304,26 +392,82 @@ export const getRoleMenus = async (req, res) => {
       .request()
       .input("RoleCode", sql.Int, code)
       .query(`
-        SELECT m.MenuKey
+        SELECT m.MenuKey, rm.CanAdd, rm.CanEdit, rm.CanDelete
         FROM dbo.tbl_web_RoleMenu rm
         JOIN dbo.tbl_web_Menu m ON m.MenuCode = rm.MenuCode AND m.Status = 1
         WHERE rm.RoleCode = @RoleCode
       `);
-    return sendSuccess(res, result.recordset.map((m) => m.MenuKey));
+    return sendSuccess(
+      res,
+      result.recordset.map((m) => ({
+        MenuKey: m.MenuKey,
+        CanAdd: !!m.CanAdd,
+        CanEdit: !!m.CanEdit,
+        CanDelete: !!m.CanDelete,
+      }))
+    );
   } catch (err) {
     console.error("DB Error (getRoleMenus):", err);
     return sendError(res, err);
   }
 };
 
-// ── POST /role-access/role-menus  { roleCode, menuKeys: [...] } ──────────────
-// Replaces the full set for the role (delete-all + insert-selected).
+// Normalize a save payload: prefer the new
+//   menus: [{ menuKey, canAdd, canEdit, canDelete }]
+// shape; fall back to the legacy `menuKeys: [...]` (full CRUD) for older clients.
+const normalizeMenus = (body) => {
+  if (Array.isArray(body?.menus)) {
+    return body.menus
+      .filter((m) => m && m.menuKey)
+      .map((m) => ({
+        menuKey: String(m.menuKey),
+        canAdd: m.canAdd !== false,
+        canEdit: m.canEdit !== false,
+        canDelete: m.canDelete !== false,
+      }));
+  }
+  if (Array.isArray(body?.menuKeys)) {
+    return body.menuKeys.map((k) => ({
+      menuKey: String(k),
+      canAdd: true,
+      canEdit: true,
+      canDelete: true,
+    }));
+  }
+  return [];
+};
+
+// Insert (owner -> menu) grants with their A/E/D flags into a RoleMenu/UserMenu
+// table inside an existing transaction. Resolves MenuKey -> MenuCode via a join
+// so unknown keys are silently ignored. `table`/`ownerCol` are server constants.
+const insertMenuGrants = async (tx, table, ownerCol, ownerCode, menus) => {
+  if (!menus.length) return;
+  const r = new sql.Request(tx);
+  r.input("Owner", sql.Int, ownerCode);
+  const rows = menus.map((m, i) => {
+    r.input(`k${i}`, sql.NVarChar, m.menuKey);
+    r.input(`a${i}`, sql.Bit, m.canAdd ? 1 : 0);
+    r.input(`e${i}`, sql.Bit, m.canEdit ? 1 : 0);
+    r.input(`d${i}`, sql.Bit, m.canDelete ? 1 : 0);
+    return `(@k${i},@a${i},@e${i},@d${i})`;
+  });
+  await r.query(`
+    INSERT INTO dbo.${table} (${ownerCol}, MenuCode, CanAdd, CanEdit, CanDelete)
+    SELECT @Owner, m.MenuCode, v.CanAdd, v.CanEdit, v.CanDelete
+    FROM dbo.tbl_web_Menu m
+    JOIN (VALUES ${rows.join(",")}) AS v(MenuKey, CanAdd, CanEdit, CanDelete)
+      ON v.MenuKey = m.MenuKey
+  `);
+};
+
+// ── POST /role-access/role-menus { roleCode, menus:[{menuKey,canAdd,...}] } ──
+// Replaces the full set for the role (delete-all + insert-selected, with flags).
 export const saveRoleMenus = async (req, res) => {
   try {
     if (!requireSub(req, res)) return;
     const roleCode = parseInt(req.body?.roleCode);
-    const menuKeys = Array.isArray(req.body?.menuKeys) ? req.body.menuKeys : [];
     if (!roleCode) return sendError(res, "Invalid roleCode", 400);
+    const menus = normalizeMenus(req.body);
 
     const pool = await getPool(req.headers.subdbname);
     const tx = new sql.Transaction(pool);
@@ -332,21 +476,7 @@ export const saveRoleMenus = async (req, res) => {
       await new sql.Request(tx)
         .input("RoleCode", sql.Int, roleCode)
         .query(`DELETE FROM dbo.tbl_web_RoleMenu WHERE RoleCode = @RoleCode`);
-
-      if (menuKeys.length) {
-        const reqIns = new sql.Request(tx);
-        reqIns.input("RoleCode", sql.Int, roleCode);
-        const params = menuKeys.map((k, i) => {
-          reqIns.input(`k${i}`, sql.NVarChar, String(k));
-          return `@k${i}`;
-        });
-        // Resolve keys -> codes so unknown keys are silently ignored.
-        await reqIns.query(`
-          INSERT INTO dbo.tbl_web_RoleMenu (RoleCode, MenuCode)
-          SELECT @RoleCode, MenuCode FROM dbo.tbl_web_Menu
-          WHERE MenuKey IN (${params.join(",")})
-        `);
-      }
+      await insertMenuGrants(tx, "tbl_web_RoleMenu", "RoleCode", roleCode, menus);
       await tx.commit();
     } catch (e) {
       await tx.rollback();
@@ -420,8 +550,8 @@ export const getUserMenus = async (req, res) => {
     const code = parseInt(req.params.userCode);
     if (!code) return sendError(res, "Invalid userCode", 400);
     const pool = await getPool(req.headers.subdbname);
-    const keys = await getUserMenuKeys(pool, code);
-    return sendSuccess(res, keys || []);
+    const rows = await getUserMenuRows(pool, code);
+    return sendSuccess(res, rows || []);
   } catch (err) {
     console.error("DB Error (getUserMenus):", err);
     return sendError(res, err);
@@ -435,8 +565,8 @@ export const saveUserMenus = async (req, res) => {
   try {
     if (!requireSub(req, res)) return;
     const userCode = parseInt(req.body?.userCode);
-    const menuKeys = Array.isArray(req.body?.menuKeys) ? req.body.menuKeys : [];
     if (!userCode) return sendError(res, "Invalid userCode", 400);
+    const menus = normalizeMenus(req.body);
 
     const pool = await getPool(req.headers.subdbname);
     const tx = new sql.Transaction(pool);
@@ -445,21 +575,7 @@ export const saveUserMenus = async (req, res) => {
       await new sql.Request(tx)
         .input("UserCode", sql.Int, userCode)
         .query(`DELETE FROM dbo.tbl_web_UserMenu WHERE UserCode = @UserCode`);
-
-      if (menuKeys.length) {
-        const reqIns = new sql.Request(tx);
-        reqIns.input("UserCode", sql.Int, userCode);
-        const params = menuKeys.map((k, i) => {
-          reqIns.input(`k${i}`, sql.NVarChar, String(k));
-          return `@k${i}`;
-        });
-        // Resolve keys -> codes so unknown keys are silently ignored.
-        await reqIns.query(`
-          INSERT INTO dbo.tbl_web_UserMenu (UserCode, MenuCode)
-          SELECT @UserCode, MenuCode FROM dbo.tbl_web_Menu
-          WHERE MenuKey IN (${params.join(",")})
-        `);
-      }
+      await insertMenuGrants(tx, "tbl_web_UserMenu", "UserCode", userCode, menus);
       await tx.commit();
     } catch (e) {
       await tx.rollback();

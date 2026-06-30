@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { sendSuccess, sendError, sendPaginated } from "../utils/response.js";
+import { getCompanyStateCode } from "../utils/masters.js";
 
 // ---------------------------------------------------------------------------
 // Waste Invoice (port of the WinForms frmWasteInvoice / frmWasteInvoiceDetails)
@@ -54,7 +55,7 @@ export const getOptions = async (req, res) => {
 
     const [customers, payModes, transporters, taxTypes, wasteItems] = await Promise.all([
       pool.request().query(
-        "Select CustomerCode, CustomerName, Address1, Address2, City, District, GSTINNo, PANNo " +
+        "Select CustomerCode, CustomerName, Address1, Address2, City, District, GSTINNo, PANNo, StateCode " +
           "from tbl_Customer where Waste = 1 order by CustomerName"
       ),
       pool.request().query("Select PayModeCode, PayModeName from tbl_PayMode"),
@@ -94,16 +95,21 @@ export const getOptions = async (req, res) => {
     const settingRow = await pool.request().query("Select TOP 1 * from tbl_Setting");
     const s = settingRow.recordset?.[0] || {};
 
+    // Seller's own state — drives the GST inter/intra-state split (CGST+SGST
+    // when the customer is in the same state, else IGST). Mirrors inward.
+    const companyStateCode = await getCompanyStateCode(pool, getCompanyCode(req));
+
     const cust = customers.recordset.map((c) => ({
       value: c.CustomerCode,
       label: c.CustomerName,
       Address1: c.Address1, Address2: c.Address2, City: c.City, District: c.District,
-      GSTINNo: c.GSTINNo, PANNo: c.PANNo,
+      GSTINNo: c.GSTINNo, PANNo: c.PANNo, StateCode: toInt(c.StateCode),
     }));
 
     return sendSuccess(res, {
       customers: cust,
       deliveryCustomers: cust,
+      companyStateCode,
       payModes: payModes.recordset.map((p) => ({ value: p.PayModeCode, label: p.PayModeName })),
       transporters: transporters.recordset.map((t) => ({ value: t.TransporterCode, label: t.TransporterName })),
       taxTypes: taxTypes.recordset.map((t) => ({
