@@ -3,14 +3,6 @@ import { getSchedulePendApproval } from "../controllers/mechanical.controller.js
 import { authenticate } from "../middleware/authMiddleware.js";
 // import { getDepartmentAndShiftData, getEmployeeAllotmentDetails, getUniqueEmployeeAllotments } from "../controllers/employeeAllotment.controller.js";
 import {
-  handleReport,
-  handleSupplierWiseReport,
-  handleItemWiseReport,
-  handleCategoryWiseReport,
-  handleCostHeadWiseReport,
-  handlePendingCategoryWiseReport,
-  handlePendingItemWiseReport,
-  handlePendingSupplierWiseReport,
   handleInwardDateWiseReport,
   handleInwardSupplierWiseReport,
   handleInwardItemWiseReport,
@@ -63,21 +55,11 @@ import {
   handleGrnApprovalPendingReport,
   handleServiceBillPassingDateWiseReport,
   handleServiceBillPassingSupplierWiseReport,
-  handlePurchaseReturnDateWiseReport,
-  handlePurchaseReturnSupplierWiseReport,
 } from "../controllers/pdfReport.controller.js";
 
 
 const router = express.Router();
 
-router.get('/purchaseorderdetails',authenticate, handleReport);
-router.get('/purchaseorder/supplierwise',authenticate, handleSupplierWiseReport);
-router.get('/purchaseorder/itemwise',authenticate, handleItemWiseReport);
-router.get('/purchaseorder/categorywise',authenticate, handleCategoryWiseReport);
-router.get('/purchaseorder/costheadwise',authenticate, handleCostHeadWiseReport);
-router.get('/purchaseorder/pending/categorywise',authenticate, handlePendingCategoryWiseReport);
-router.get('/purchaseorder/pending/itemwise',authenticate, handlePendingItemWiseReport);
-router.get('/purchaseorder/pending/supplierwise',authenticate, handlePendingSupplierWiseReport);
 router.get('/inward/datewise',authenticate, handleInwardDateWiseReport);
 router.get('/inward/supplierwise',authenticate, handleInwardSupplierWiseReport);
 router.get('/inward/itemwise',authenticate, handleInwardItemWiseReport);
@@ -130,8 +112,6 @@ router.get('/grn-bill-passing/supplierwise',authenticate, handleGrnBillPassingSu
 router.get('/grn-approval/pending',authenticate, handleGrnApprovalPendingReport);
 router.get('/service-bill-passing/datewise',authenticate, handleServiceBillPassingDateWiseReport);
 router.get('/service-bill-passing/supplierwise',authenticate, handleServiceBillPassingSupplierWiseReport);
-router.get('/purchase-return/datewise',authenticate, handlePurchaseReturnDateWiseReport);
-router.get('/purchase-return/supplierwise',authenticate, handlePurchaseReturnSupplierWiseReport);
 // router.get('/employee-allotment-details/list',authenticate, getEmployeeAllotmentDetails);
 // router.get('/unique-employee-allotments/list',authenticate, getUniqueEmployeeAllotments);
 

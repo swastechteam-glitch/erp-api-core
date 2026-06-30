@@ -2,14 +2,6 @@ import sql from "mssql";
 import { getPool } from "../config/dynamicDB.js";
 import { applyBranchCode, showBranchDropDown } from "../utils/common.js";
 import PdfPrinter from 'pdfmake'
-import poDetails from './report/store/purchaseOrderDetails.js'
-import poSupplierWise from './report/store/purchaseOrderSupplierWise.js'
-import poItemWise from './report/store/purchaseOrderItemWise.js'
-import poCategoryWise from './report/store/purchaseOrderCategoryWise.js'
-import poCostHeadWise from './report/store/purchaseOrderCostHeadWise.js'
-import poPendingCategoryWise from './report/store/purchaseOrderPendingCategoryWise.js'
-import poPendingItemWise from './report/store/purchaseOrderPendingItemWise.js'
-import poPendingSupplierWise from './report/store/purchaseOrderPendingSupplierWise.js'
 import inwardReport from './report/store/inwardReport.js'
 import issueReport from './report/store/issueReport.js'
 import stockReport from './report/store/stockReport.js'
@@ -17,7 +9,6 @@ import serviceOrderCompleteReport from './report/store/serviceOrderCompleteRepor
 import costingReport from './report/store/costingReport.js'
 import grnBillPassing from './report/store/grnBillPassing.js'
 import serviceBillPassing from './report/store/serviceBillPassing.js'
-import purchaseReturn from './report/store/purchaseReturn.js'
 import yarnSalesOrderReport from './report/yarn/salesOrderReport.js'
 import yarnInvoiceReport from './report/yarn/invoiceReport.js'
 import yarnPurchaseOrderReport from './report/yarn/purchaseOrderReport.js'
@@ -169,53 +160,9 @@ async function runReport(req, res, { spName, reportModule, fileName, extraInputs
   }
 }
 
-export const handleReport = (req, res) => runReport(req, res, {
-  spName: 'sp_PurchaseOrderDetails_GetAll',
-  reportModule: poDetails,
-  fileName: 'PurchaseOrderDetails'
-});
-
-export const handleSupplierWiseReport = (req, res) => runReport(req, res, {
-  spName: 'sp_PurchaseOrderDetails_GetAll',
-  reportModule: poSupplierWise,
-  fileName: 'PurchaseOrder_SupplierWise'
-});
-
-export const handleItemWiseReport = (req, res) => runReport(req, res, {
-  spName: 'sp_PurchaseOrderDetails_GetAll',
-  reportModule: poItemWise,
-  fileName: 'PurchaseOrder_ItemWise'
-});
-
-export const handleCategoryWiseReport = (req, res) => runReport(req, res, {
-  spName: 'sp_PurchaseOrderDetails_GetAll',
-  reportModule: poCategoryWise,
-  fileName: 'PurchaseOrder_CategoryWise'
-});
-
-export const handleCostHeadWiseReport = (req, res) => runReport(req, res, {
-  spName: 'sp_PurchaseOrderDetails_GetAll',
-  reportModule: poCostHeadWise,
-  fileName: 'PurchaseOrder_CostHeadWise'
-});
-
-export const handlePendingCategoryWiseReport = (req, res) => runReport(req, res, {
-  spName: 'sp_RptPurchaseOrderDetailsPending',
-  reportModule: poPendingCategoryWise,
-  fileName: 'PurchaseOrderPending_CategoryWise'
-});
-
-export const handlePendingItemWiseReport = (req, res) => runReport(req, res, {
-  spName: 'sp_RptPurchaseOrderDetailsPending',
-  reportModule: poPendingItemWise,
-  fileName: 'PurchaseOrderPending_ItemWise'
-});
-
-export const handlePendingSupplierWiseReport = (req, res) => runReport(req, res, {
-  spName: 'sp_RptPurchaseOrderDetailsPending',
-  reportModule: poPendingSupplierWise,
-  fileName: 'PurchaseOrderPending_SupplierWise'
-});
+// NOTE: The Store Purchase Order report (Details + Pending) was moved to the new
+// shared-_common.js convention in controllers/report/store/purchaseOrder.js
+// (endpoints /store/reports/purchase-order*). Its old handlers were removed here.
 
 // sp_RptPurchaseOrderReceivedDetails also takes a static @WithImage flag (0 = no
 // item images in the result set). Applied to every inward variant.
@@ -540,17 +487,5 @@ export const handleServiceBillPassingSupplierWiseReport = (req, res) => runRepor
   spName: 'sp_ServiceOrderComplete_Approval_GetAll',
   reportModule: serviceBillPassing.supplierWise,
   fileName: 'ServiceBillPassing_SupplierWise'
-});
-
-export const handlePurchaseReturnDateWiseReport = (req, res) => runReport(req, res, {
-  spName: 'sp_PurchaseReturnDetails_GetAll',
-  reportModule: purchaseReturn.dateWise,
-  fileName: 'PurchaseReturn_DateWise'
-});
-
-export const handlePurchaseReturnSupplierWiseReport = (req, res) => runReport(req, res, {
-  spName: 'sp_PurchaseReturnDetails_GetAll',
-  reportModule: purchaseReturn.supplierWise,
-  fileName: 'PurchaseReturn_SupplierWise'
 });
 
