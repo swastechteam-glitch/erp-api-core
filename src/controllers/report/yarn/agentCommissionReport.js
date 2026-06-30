@@ -296,7 +296,111 @@ const agentWiseConfig = {
   ]
 };
 
+// ============================================================================
+// LIST — rptAgentCommisionList.rdlc. Per-agent settlement list off a DIFFERENT
+// SP (sp_AgentCommissionList): one row per invoice with commission %, received /
+// balance amount and ageing (Cr / Paid / Running days). Grouped by Agent with a
+// per-agent Total + a Net Total. Self-contained builder (its own wide column set
+// and a compact layout so all 16 columns fit A4 landscape).
+// ============================================================================
+function buildList(rows, companyName, fromDate, toDate, companyLogo) {
+  const fs = 7;
+  const dateLine = `From Date : ${ddmmyyyy(fromDate)}    To Date : ${ddmmyyyy(toDate)}`;
+  const listLayout = {
+    hLineWidth: (i, node) => (i === 0 || i === 1 || i === node.table.body.length ? 0.8 : 0.4),
+    vLineWidth: () => 0.4,
+    hLineColor: (i, node) => (i === 0 || i === 1 || i === node.table.body.length ? COLORS.headerFill : COLORS.borderColor),
+    vLineColor: () => COLORS.borderColor,
+    paddingLeft: () => 2, paddingRight: () => 2, paddingTop: () => 4, paddingBottom: () => 4
+  };
+
+  const COLS = [
+    { header: 'S.No', width: 22, align: 'center', kind: 'sno' },
+    { header: 'Customer Name', width: '*', align: 'left', key: 'CustomerName', kind: 'text' },
+    { header: 'Bill Date', width: 48, align: 'center', key: 'BillDate', kind: 'date' },
+    { header: 'Bill No', width: 38, align: 'center', key: 'BillNO', kind: 'int' },
+    { header: 'Bags', width: 30, align: 'right', key: 'Bags', kind: 'int', total: true },
+    { header: 'Basic', width: 48, align: 'right', key: 'ExMillRate', kind: 'num' },
+    { header: 'Bill Amount', width: 58, align: 'right', key: 'BillAmount', kind: 'num', total: true },
+    { header: 'Actual Commi.', width: 56, align: 'right', key: 'ActualCommissionAmt', kind: 'num', total: true },
+    { header: 'Commi. Amount', width: 56, align: 'right', key: 'CommissionAmount', kind: 'num', total: true },
+    { header: 'Late Payment', width: 50, align: 'right', key: 'LatePayment', kind: 'num', total: true },
+    { header: 'Balance Amount', width: 58, align: 'right', key: 'BalanceAmount', kind: 'num', total: true },
+    { header: 'Payment Date', width: 48, align: 'center', key: 'PaymentDate', kind: 'date' },
+    { header: 'Received Date', width: 48, align: 'center', key: 'ReceivedDate', kind: 'date' },
+    { header: 'Cr. Days', width: 32, align: 'right', key: 'CreditDays', kind: 'int' },
+    { header: 'Paid Days', width: 34, align: 'right', key: 'PaidDays', kind: 'int' },
+    { header: 'Running Days', width: 42, align: 'right', key: 'RunningDays', kind: 'int' },
+  ];
+  const colCount = COLS.length;
+  const firstTotal = COLS.findIndex(c => c.total); // index of Bags
+  const totalCols = COLS.filter(c => c.total);
+
+  const totalsRow = (label, totals, fill, color) => {
+    const row = [{ text: label, colSpan: firstTotal, alignment: 'right', bold: true, color, fillColor: fill, fontSize: fs }];
+    for (let k = 1; k < firstTotal; k++) row.push({});
+    for (let i = firstTotal; i < COLS.length; i++) {
+      const c = COLS[i];
+      row.push(c.total
+        ? { text: totalText(c, totals[c.key] || 0), alignment: 'right', bold: true, color, fillColor: fill, fontSize: fs }
+        : { text: '', fillColor: fill });
+    }
+    return row;
+  };
+
+  const body = [headerCells(COLS, fs)];
+
+  const groupsMap = new Map();
+  for (const r of rows) {
+    const k = (r.AgentCode != null ? String(r.AgentCode) : '') + '||' + (str(r, 'AgentName') || '(Unknown)');
+    if (!groupsMap.has(k)) groupsMap.set(k, { rows: [] });
+    groupsMap.get(k).rows.push(r);
+  }
+  const keys = [...groupsMap.keys()].sort((a, b) => (a.split('||')[1] || '').localeCompare(b.split('||')[1] || ''));
+
+  const grand = {};
+  for (const c of totalCols) grand[c.key] = 0;
+
+  for (const key of keys) {
+    const g = groupsMap.get(key);
+    const first = g.rows[0] || {};
+    const label = 'Agent Name : ' + (str(first, 'AgentName') || '(Unknown)') +
+      '          Commission Per Cent : ' + fmt(dec(first, 'RealCommissionPer'), 2) + ' %';
+    const ghr = [{ text: label, colSpan: colCount, bold: true, color: COLORS.groupText, fillColor: COLORS.groupFill, fontSize: fs + 1, margin: [2, 2, 0, 2] }];
+    for (let i = 1; i < colCount; i++) ghr.push({});
+    body.push(ghr);
+
+    const sub = {};
+    for (const c of totalCols) sub[c.key] = 0;
+    let idx = 1;
+    for (const r of g.rows) {
+      body.push(COLS.map(c => ({ text: cellText(c, r, idx), alignment: c.align || 'left', fontSize: fs, fillColor: idx % 2 === 0 ? COLORS.zebraFill : null })));
+      for (const c of totalCols) sub[c.key] += dec(r, c.key);
+      idx++;
+    }
+    body.push(totalsRow('Total', sub, COLORS.subFill, COLORS.subText));
+    for (const c of totalCols) grand[c.key] += sub[c.key];
+  }
+  body.push(totalsRow('Net Total', grand, COLORS.grandFill, COLORS.grandText));
+
+  return {
+    pageSize: 'A4',
+    pageOrientation: 'landscape',
+    pageMargins: [12, 18, 12, 40],
+    footer: baseFooter,
+    content: [
+      titleBlock(companyName, 'YARN AGENT COMMISSION - LIST', dateLine, companyLogo),
+      {
+        table: { headerRows: 1, dontBreakRows: true, keepWithHeaderRows: 0, widths: COLS.map(c => c.width), body },
+        layout: listLayout
+      }
+    ],
+    defaultStyle: { font: 'Roboto', fontSize: fs, lineHeight: 1.15 }
+  };
+}
+
 export const dateWise = { buildDocDefinition: makeBuilder(dateWiseConfig) };
 export const agentWise = { buildDocDefinition: makeBuilder(agentWiseConfig) };
+export const list = { buildDocDefinition: buildList };
 
-export default { dateWise, agentWise };
+export default { dateWise, agentWise, list };
