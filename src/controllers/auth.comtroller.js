@@ -34,6 +34,26 @@ export const generateToken = (
   );
 };
 
+// Look up the user's RBAC role (RoleName + IsSuperAdmin) so the web app can
+// decide which app shell to show on login. Never breaks login: returns null if
+// the RBAC tables aren't deployed yet (SQL 208) or anything else goes wrong.
+const getUserRoleInfo = async (pool, userCode) => {
+  try {
+    const r = await pool
+      .request()
+      .input("UserCode", sql.Int, userCode)
+      .query(`
+        SELECT TOP 1 r.RoleCode, r.RoleName, r.IsSuperAdmin
+        FROM dbo.tbl_web_UserRole ur
+        JOIN dbo.tbl_web_Role r ON r.RoleCode = ur.RoleCode AND r.Status = 1
+        WHERE ur.UserCode = @UserCode
+      `);
+    return r.recordset[0] || null;
+  } catch (err) {
+    return null; // RBAC not configured / lookup failed -> no role (full menu fallback)
+  }
+};
+
 export const authLogin = async (req, res) => {
   try {
     const { UName, WebPassword, companyCode, branchCode, fyCode } = req.body;
@@ -87,6 +107,14 @@ export const authLogin = async (req, res) => {
           branchCode,
           companyCode,
         );
+
+        // Attach the user's RBAC role so the web app can pick the right shell
+        // (management vs employee) and so normalizeAccess() gets a real role.
+        const roleInfo = await getUserRoleInfo(pool, user.UserCode);
+        user.role = roleInfo?.RoleName || null;
+        user.roleCode = roleInfo?.RoleCode || null;
+        user.isSuperAdmin = !!roleInfo?.IsSuperAdmin;
+
         return res.status(200).json({ success: true, token, user });
       }
     }
