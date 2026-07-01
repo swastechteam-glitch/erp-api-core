@@ -55,10 +55,6 @@ import {
   handleGrnApprovalPendingReport,
   handleServiceBillPassingDateWiseReport,
   handleServiceBillPassingSupplierWiseReport,
-<<<<<<< Updated upstream
-=======
-  handlePurchaseReturnDateWiseReport,
-  handlePurchaseReturnSupplierWiseReport,
   handleYarnMasterReport,
   handleYarnProductionReport,
   handleYarnProductionOptions,
@@ -76,7 +72,6 @@ import {
   handleYarnGrnReportOptions,
   handleYarnTransportInvoiceReportMulti,
   handleYarnTransportInvoiceReportOptions,
->>>>>>> Stashed changes
 } from "../controllers/pdfReport.controller.js";
 
 

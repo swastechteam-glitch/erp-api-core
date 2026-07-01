@@ -163,11 +163,9 @@ async function runReport(req, res, { spName, reportModule, fileName, extraInputs
   }
 }
 
-<<<<<<< Updated upstream
 // NOTE: The Store Purchase Order report (Details + Pending) was moved to the new
 // shared-_common.js convention in controllers/report/store/purchaseOrder.js
 // (endpoints /store/reports/purchase-order*). Its old handlers were removed here.
-=======
 // ---------------------------------------------------------------------------
 // Yarn MASTER reports (rptCountName family). Unlike runReport, the master
 // sp_*_GetAll procs take NO @CompanyCode / date params — only an OPTIONAL
@@ -871,7 +869,6 @@ export const handlePendingSupplierWiseReport = (req, res) => runReport(req, res,
   reportModule: poPendingSupplierWise,
   fileName: 'PurchaseOrderPending_SupplierWise'
 });
->>>>>>> Stashed changes
 
 // sp_RptPurchaseOrderReceivedDetails also takes a static @WithImage flag (0 = no
 // item images in the result set). Applied to every inward variant.
