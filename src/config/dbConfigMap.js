@@ -146,17 +146,11 @@ export const clientDBConfig = {
 
     // LOCALHOST points at the Thenpandian external server so local dev (and all
     // users) can reach the app from anywhere.
-    // user: "sa",
-    // password: "@dmin1305",
-    // server: "61.2.74.74",
-    // port: 16000,
-    // database: "SwasERP_ThenpandianU2",
-
-        user: "sa",
+    user: "sa",
     password: "@dmin1305",
-    server: "103.208.228.199",
+    server: "61.2.74.74",
     port: 16000,
-    database: "SwasERP_SKT_Test",
+    database: "SwasERP_ThenpandianU2",
 
     // user: "sa",
     // password: "@dmin1305",
@@ -261,8 +255,8 @@ export const clientDBConfig = {
   TPN2: {
     user: "sa",
     password: "@dmin1305",
-    server: "TPSMSERVER\\SQL2008",
-    // port: 16000,
+    server: "61.2.74.74",
+    port: 16000,
     database: "SwasERP_ThenpandianU2",
   },
 
