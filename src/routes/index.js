@@ -262,6 +262,16 @@ import lateHrsRouter from "./lateHrsRoutes.js";
 import newJoinerPassRouter from "./newJoinerPassRoutes.js";
 import vacationEntryRouter from "./vacationEntryRoutes.js";
 import leftRejoinRouter from "./leftRejoinRoutes.js";
+import onDutyEntryRouter from "./onDutyEntryRoutes.js";
+import compensationWorkEntryRouter from "./compensationWorkEntryRoutes.js";
+import payrollTransactionOverallRouter from "./payrollTransactionOverallRoutes.js";
+import loanEntryRouter from "./loanEntryRoutes.js";
+import loanApprovalRouter from "./loanApprovalRoutes.js";
+import loanCloseRouter from "./loanCloseRoutes.js";
+import labourAgentCommissionRouter from "./labourAgentCommissionRoutes.js";
+import holdSalaryRouter from "./holdSalaryRoutes.js";
+import weighBridgeRouter from "./weighBridgeRoutes.js";
+import weighBridgePrintRouter from "./weighBridgePrintRoutes.js";
 
 const router = express.Router();
 
@@ -318,6 +328,16 @@ const appRoutes = () => {
   router.use("/new-joiner-pass", newJoinerPassRouter);
   router.use("/vacation-entry", vacationEntryRouter);
   router.use("/left-rejoin", leftRejoinRouter);
+  router.use("/on-duty-entry", onDutyEntryRouter);
+  router.use("/compensation-work-entry", compensationWorkEntryRouter);
+  router.use("/payroll-transaction-overall", payrollTransactionOverallRouter);
+  router.use("/loan-entry", loanEntryRouter);
+  router.use("/loan-approval", loanApprovalRouter);
+  router.use("/loan-close", loanCloseRouter);
+  router.use("/labour-agent-commission", labourAgentCommissionRouter);
+  router.use("/hold-salary", holdSalaryRouter);
+  router.use("/weigh-bridge", weighBridgeRouter);
+  router.use("/weigh-bridge-print", weighBridgePrintRouter);
   router.use("/finance", financeRouter);
   router.use("/finance/overview", financeOverviewRouter);
   router.use("/bank", bankRouter);
