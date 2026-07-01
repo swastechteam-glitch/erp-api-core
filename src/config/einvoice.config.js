@@ -34,6 +34,25 @@ export const einvoiceConfig = {
   // GSTRobo routes every call on a generic endpoint by an `action` query param.
   authAction: process.env.EINV_AUTH_ACTION || "ACCESSTOKEN",
   generateAction: process.env.EINV_GEN_ACTION || "GENERATE",
+
+  // NIC IRP / E-Way-Bill TAXPAYER API credentials (username + password). These
+  // are the portal API user the GSP forwards for E-Way-Bill generate / cancel
+  // (and, on some GSPs, for IRP auth). Keep them in the environment in
+  // production — the literal fallback here is only for local/dev.
+  // SECURITY: do not commit real secrets; set EINV_EWB_USERNAME / EINV_EWB_PASSWORD.
+  ewbUserName: process.env.EINV_EWB_USERNAME || "API_TPSM_SWAS",
+  ewbPassword: process.env.EINV_EWB_PASSWORD || "Skyrp@1979",
+};
+
+// Sales-type → source detail view. The Generate / Print worklist reads its
+// documents from the matching view (each tbl_SalesDayBook row carries a
+// SalesType). Confirm each view's exact column names before wiring the query.
+export const SALESTYPE_VIEW = {
+  YARN_SALES: "vw_InvoiceDetails",
+  SCRAP_SALES: "vw_ScrapInvoiceDetails",
+  WASTE_SALES: "vw_WasteInvoiceDetails",
+  GENERAL_SALES: "vw_GeneralSalesDetails",
+  COTTON_SALES: "vw_CottonSalesDetails",
 };
 
 export default einvoiceConfig;

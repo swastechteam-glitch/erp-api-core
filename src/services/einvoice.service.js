@@ -12,23 +12,25 @@
 // ---------------------------------------------------------------------------
 
 import axios from "axios";
-import { einvoiceConfig as cfg } from "../config/einvoice.config.js";
+import { einvoiceConfig as staticCfg } from "../config/einvoice.config.js";
 
-// In-memory token cache (single GSTIN). { token, sek, expiresAt }
-let cachedToken = null;
+// Per-portal token cache. Key = gstin|clientId|authUrl, so e-invoice vs EWB (and
+// different companies / GSTINs) cache independently. { token, sek, expiresAt }
+const tokenCache = new Map();
+const cacheKey = (c) => `${c.gstin}|${c.clientId}|${c.authUrl}`;
 
 const num = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
 
-// Headers every GSP call carries. Adjust the key names here if GSTRobo expects
-// different casing (e.g. `client-id`) — this is the single source of truth.
-const baseHeaders = () => ({
-  gstin: cfg.gstin,
-  client_id: cfg.clientId,
-  client_secret: cfg.clientSecret,
-  ip_address: cfg.ipAddress,
+// Headers every GSP call carries, from the RESOLVED portal config (DB-driven,
+// see einvoicePortal.service.js). Adjust key casing here if GSTRobo differs.
+const baseHeaders = (c) => ({
+  gstin: c.gstin,
+  client_id: c.clientId,
+  client_secret: c.clientSecret,
+  ip_address: c.ipAddress,
   "Content-Type": "application/json",
 });
 
@@ -41,22 +43,24 @@ const pick = (obj, keys) => {
 };
 
 // ---------------------------------------------------------------------------
-// Authentication (token cached & auto-refreshed)
+// Authentication (token cached & auto-refreshed). `cfg` is the resolved portal
+// config (falls back to the static config).
 // ---------------------------------------------------------------------------
-export async function authenticate(force = false) {
+export async function authenticate(cfg = staticCfg, force = false) {
+  const key = cacheKey(cfg);
+  const cached = tokenCache.get(key);
   // Reuse a still-valid token (60s safety margin).
-  if (!force && cachedToken && cachedToken.expiresAt > Date.now() + 60_000) {
-    return cachedToken.token;
+  if (!force && cached && cached.expiresAt > Date.now() + 60_000) {
+    return cached.token;
   }
 
   // Discovered GSTRobo TP contract: credentials are HEADERS (gstin / client_id /
-  // client_secret), the operation `action` goes in the BODY. (Sending `action`
-  // as a header is rejected with "Invalid action for Authenticate".)
+  // client_secret), the operation `action` goes in the BODY.
   const res = await axios.post(
     cfg.authUrl,
-    { action: cfg.authAction },
+    { action: cfg.authAction || staticCfg.authAction },
     {
-      headers: baseHeaders(),
+      headers: baseHeaders(cfg),
       timeout: 60_000,
       validateStatus: () => true,
     }
@@ -75,29 +79,32 @@ export async function authenticate(force = false) {
 
   const expSeconds =
     num(pick(data, ["TokenExpiry", "ExpiresIn", "expiresIn"])) ||
-    cfg.tokenTtlSeconds;
+    cfg.tokenTtlSeconds ||
+    staticCfg.tokenTtlSeconds;
 
-  cachedToken = {
+  tokenCache.set(key, {
     token,
     sek: pick(data, ["Sek", "sek"]),
     expiresAt: Date.now() + expSeconds * 1000,
-  };
+  });
   return token;
 }
 
 // ---------------------------------------------------------------------------
 // Generate IRN — posts a fully-built NIC payload. Retries once on token expiry.
+// `cfg` is the resolved portal config.
 // ---------------------------------------------------------------------------
-export async function generateEInvoice(nicPayload) {
+export async function generateEInvoice(cfg, nicPayload) {
+  const c = cfg || staticCfg;
   const post = async (token) =>
-    axios.post(cfg.invoiceUrl, nicPayload, {
-      headers: { ...baseHeaders(), AuthToken: token, "auth-token": token },
-      params: { action: cfg.generateAction },
+    axios.post(c.invoiceUrl, nicPayload, {
+      headers: { ...baseHeaders(c), AuthToken: token, "auth-token": token },
+      params: { action: c.generateAction || staticCfg.generateAction },
       timeout: 60_000,
       validateStatus: () => true,
     });
 
-  let token = await authenticate();
+  let token = await authenticate(c);
   let res = await post(token);
 
   // If the GSP says the token is invalid/expired, refresh once and retry.
@@ -105,7 +112,7 @@ export async function generateEInvoice(nicPayload) {
     res.status === 401 ||
     /token|unauthor|expired/i.test(JSON.stringify(res.data || "").slice(0, 300));
   if (looksExpired) {
-    token = await authenticate(true);
+    token = await authenticate(c, true);
     res = await post(token);
   }
 
