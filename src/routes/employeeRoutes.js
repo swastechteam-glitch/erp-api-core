@@ -9,6 +9,7 @@ import {
   getGrades,
   getNextId,
   getForm12No,
+  checkId,
   getList,
   getById,
   create,
@@ -29,6 +30,7 @@ router.get("/districts/:stateCode", authenticate, getDistricts);
 router.get("/grades/:empCategoryCode", authenticate, getGrades);
 router.get("/next-id/:empGroupCode", authenticate, getNextId);
 router.get("/form12/:empGroupCode", authenticate, getForm12No);
+router.get("/exists/:employeeId", authenticate, checkId);
 router.get("/lists", authenticate, getList);
 router.get("/list/:employeeCode", authenticate, getById);
 router.post("/create", authenticate, create);

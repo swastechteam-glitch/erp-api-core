@@ -93,7 +93,7 @@ export const getOptions = async (req, res) => {
     const [
       branches, empGroups, agents, empCategories, departments, sexes, routes,
       batches, hostelTypes, employments, shiftGroups, payTypes, weekoffs,
-      states, maritals, bloodGroups, banks,
+      states, maritals, bloodGroups, banks, workloads,
     ] = await Promise.all([
       q(`Select BranchCode, BranchName from tbl_Branch where Status = 1 AND CompanyCode = ${cc} order by BranchName`),
       q(`Select EmpGroupCode, EmpGroupName from tbl_EmpGroup where Status = 1 order by EmpGroupName`),
@@ -112,6 +112,7 @@ export const getOptions = async (req, res) => {
       q(`Select MaritalCode, Marital from tbl_Marital`),
       q(`Select BloodGroupCode, BloodGroup from tbl_BloodGroup where Status = 1`),
       q(`Select BankCode, BankName from tbl_Bank where Status = 1 order by BankName`),
+      q(`Select WorkLoadCode, WorkLoad from tbl_WorkLoad where Status = 1 order by WorkLoad`),
     ]);
 
     return sendSuccess(res, {
@@ -132,6 +133,7 @@ export const getOptions = async (req, res) => {
       maritals: opt(maritals, "MaritalCode", "Marital"),
       bloodGroups: opt(bloodGroups, "BloodGroupCode", "BloodGroup"),
       banks: opt(banks, "BankCode", "BankName"),
+      workloads: opt(workloads, "WorkLoadCode", "WorkLoad"),
       payModes: [
         { value: "DAY", label: "DAY" },
         { value: "MONTH", label: "MONTH" },
@@ -257,6 +259,33 @@ export const getForm12No = async (req, res) => {
   }
 };
 
+// GET /employee/exists/:employeeId?exclude=<EmployeeCode>
+//   Company-scoped Employee-ID duplicate check (port of frmEmployee txtEmployeeID_Leave:
+//   "select * from vw_Employee_New where CompanyCode = .. AND EmployeeID = ..", and on
+//   edit "EmployeeCode NOT IN (..)"). Returns { exists }.
+export const checkId = async (req, res) => {
+  try {
+    if (!req.headers.subdbname) return sendError(res, "Missing subDBName", 400);
+    const employeeId = toInt(req.params.employeeId);
+    const exclude = toInt(req.query.exclude);
+    if (employeeId <= 0) return sendSuccess(res, { exists: false });
+    const pool = await getPool(req.headers.subdbname);
+    const r = await pool
+      .request()
+      .input("CompanyCode", sql.Int, getCompanyCode(req))
+      .input("EmployeeID", sql.Int, employeeId)
+      .input("Exclude", sql.Int, exclude)
+      .query(
+        `Select TOP 1 EmployeeCode from vw_Employee_New
+         where CompanyCode = @CompanyCode AND EmployeeID = @EmployeeID AND EmployeeCode <> @Exclude`
+      );
+    return sendSuccess(res, { exists: r.recordset.length > 0 });
+  } catch (err) {
+    console.error("DB Error (Employee.checkId):", err);
+    return sendError(res, err);
+  }
+};
+
 // GET /employee/lists  -> sp_Employee_GetAll_Grid
 export const getList = async (req, res) => {
   try {
@@ -342,6 +371,16 @@ export const getById = async (req, res) => {
       Nominee: toBit(pick(f, "Nominee")) ? 1 : 0,
     }));
 
+    // Approval-pending → the desktop opens such records VIEW-ONLY. Membership of
+    // the company's pending list (sp_Employee_GetAll_PendApprove @CompanyCode).
+    row.approvalPending = false;
+    try {
+      const pend = await pool.request().input("CompanyCode", sql.Int, cc).execute("sp_Employee_GetAll_PendApprove");
+      row.approvalPending = (pend.recordset || []).some((p) => toInt(pick(p, "EmployeeCode")) === code);
+    } catch {
+      row.approvalPending = false;
+    }
+
     return sendSuccess(res, row);
   } catch (err) {
     console.error("DB Error (Employee.getById):", err);
@@ -403,6 +442,18 @@ const saveOrUpdate = async (req, res, isEdit) => {
     if (isEdit && !code) return sendError(res, "Invalid EmployeeCode for update", 400);
 
     const pool = await getPool(req.headers.subdbname);
+
+    // An approval-pending record is view-only in the desktop; refuse to update it
+    // (matches the "This is only for View" gate) — 409 so the client can re-gate.
+    if (isEdit) {
+      try {
+        const pend = await pool.request().input("CompanyCode", sql.Int, companyCode).execute("sp_Employee_GetAll_PendApprove");
+        if ((pend.recordset || []).some((p) => toInt(pick(p, "EmployeeCode")) === code))
+          return sendError(res, "This employee record is pending approval and cannot be edited.", 409);
+      } catch {
+        /* if the pending check itself fails, fall through to the normal save */
+      }
+    }
 
     // Shift rotation comes from the chosen shift group (desktop reads ColData).
     const sg = await pool
