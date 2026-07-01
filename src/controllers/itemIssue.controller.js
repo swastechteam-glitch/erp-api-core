@@ -42,9 +42,11 @@ const toNum = (v) => {
 const str = (v) => (v ?? "").toString().trim();
 const r4 = (v) => Math.round((toNum(v) + Number.EPSILON) * 1e4) / 1e4;
 const r2 = (v) => Math.round((toNum(v) + Number.EPSILON) * 1e2) / 1e2;
-// Val() of the legacy NumericOnly txtIndentNo: keep the digits of the indent no
-// string (e.g. "IND000268" -> 268).
-const digitsInt = (v) => toInt(String(v ?? "").replace(/\D/g, ""));
+// Numeric indent no from the SP's formatted string. strItemRequisitionNo comes as
+// "IND000228 / 2026-2027" — the indent number is only the FIRST token; the trailing
+// financial year must NOT be folded in (digits of the whole string overflow @IndentNo,
+// a SQL Int). Take digits of the token before "/" only: "IND000228 / 2026-2027" -> 228.
+const indentNoInt = (v) => toInt(String(v ?? "").split("/")[0].replace(/\D/g, ""));
 const getCompanyCode = (req) => toInt(req.headers.companyCode);
 const getFYCode = (req) => toInt(req.headers.FYCode);
 const pad2 = (n) => String(n).padStart(2, "0");
@@ -500,9 +502,11 @@ export const create = async (req, res) => {
     if (!b.issueDate || Number.isNaN(new Date(b.issueDate).getTime())) return sendError(res, "Check Issue Date", 400);
     const itemRequisitionCode = toInt(b.itemRequisitionCode);
     if (itemRequisitionCode <= 0) return sendError(res, "Select Issue pending Line in Grid", 400);
-    // Indent no must be present AND resolve to a numeric @IndentNo > 0 (a real
-    // "IND000268" -> 268); a digitless string would otherwise bind @IndentNo = 0.
-    if (str(b.indentNo).length <= 0 || digitsInt(b.indentNo) <= 0) return sendError(res, "Given Indent No is invalid", 400);
+    // Indent no must be present AND resolve to a numeric @IndentNo > 0. Prefer the
+    // pure ItemRequisitionNo the client got from pull-details (indentNoNum); fall back
+    // to parsing the formatted string ("IND000228 / 2026-2027" -> 228) for older clients.
+    const indentNoNum = toInt(b.indentNoNum) || indentNoInt(b.indentNo);
+    if (str(b.indentNo).length <= 0 || indentNoNum <= 0) return sendError(res, "Given Indent No is invalid", 400);
     if (toInt(b.branchCode) <= 0) return sendError(res, "Select the Branch...", 400);
     if (toInt(b.employeeCode) <= 0) return sendError(res, "Select the Req. ID or Name", 400);
 
@@ -567,7 +571,7 @@ export const create = async (req, res) => {
     head.input("IssueDate", sql.DateTime, localDate(b.issueDate));
     head.input("IssueNo", sql.Int, issueNo);
     head.input("BranchCode", sql.Int, toInt(b.branchCode));
-    head.input("IndentNo", sql.Int, digitsInt(b.indentNo));
+    head.input("IndentNo", sql.Int, indentNoNum);
     head.input("EmployeeCode", sql.Int, toInt(b.employeeCode));
     head.input("TotalReturnQty", sql.Decimal(18, 3), totalReturnQty);
     head.input("TotalQty", sql.Decimal(18, 3), totalQty);
