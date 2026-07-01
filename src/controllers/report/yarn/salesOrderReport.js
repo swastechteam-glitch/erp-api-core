@@ -387,9 +387,34 @@ const countWiseConfig = {
   ]
 };
 
+// ============================================================================
+// SALES TYPE WISE — grouped by SalesTypeCode (mirrors rptSalesOrderDetailsSalesTypeWise)
+// ============================================================================
+const salesTypeWiseConfig = {
+  title: 'SALES ORDER DETAILS - SALES TYPE WISE',
+  summaryGroupHeader: 'Sales Type',
+  subLabelSpan: 5,
+  groupKey: (r) => (str(r, 'SalesType') || '(Unknown)') + '||' + (r.SalesTypeCode != null ? String(r.SalesTypeCode) : ''),
+  groupLabel: (first) => 'Sales Type : ' + (str(first, 'SalesType') || '(Unknown)'),
+  columns: [
+    { header: 'S.No', width: 24, cell: sn() },
+    { header: 'DA No', width: 50, cell: txt(r => str(r, 'SONo'), 'center') },
+    { header: 'Date', width: 55, cell: txt(r => ddmmyyyy(r.SODate), 'center') },
+    { header: 'Customer', width: '*', cell: txt(r => str(r, 'Customer')) },
+    { header: 'Count', width: '*', cell: txt(r => str(r, 'CountName')) },
+    { header: 'Qty', width: 40, cell: intNum(r => dec(r, 'Qty')), totalKey: 'qty', totalFmt: intFmt, totalFn: r => dec(r, 'Qty') },
+    { header: 'Kgs', width: 55, cell: num(r => dec(r, 'Weight'), 3), totalKey: 'kgs', totalDigits: 3, totalFn: r => dec(r, 'Weight') },
+    { header: 'Ex Mill Rate', width: 55, cell: num(r => dec(r, 'RateEx'), 0) },
+    { header: 'Rate', width: 45, cell: num(r => dec(r, 'Rate'), 0) },
+    { header: 'Delivery', width: '*', cell: txt(r => str(r, 'DelCustomer')) },
+    { header: 'Agent', width: 80, cell: txt(r => str(r, 'AgentName')) }
+  ]
+};
+
 export const dateWise = { buildDocDefinition: makeBuilder(dateWiseConfig) };
 export const customerWise = { buildDocDefinition: makeBuilder(customerWiseConfig) };
 export const agentWise = { buildDocDefinition: makeBuilder(agentWiseConfig) };
 export const countWise = { buildDocDefinition: makeBuilder(countWiseConfig) };
+export const salesTypeWise = { buildDocDefinition: makeBuilder(salesTypeWiseConfig) };
 
-export default { dateWise, customerWise, agentWise, countWise };
+export default { dateWise, customerWise, agentWise, countWise, salesTypeWise };

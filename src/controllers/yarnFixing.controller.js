@@ -52,7 +52,7 @@ export const getOptions = async (req, res) => {
     const pool = await getPool(req.headers.subdbname);
     const date = D(req.query.date) || new Date();
 
-    const [employees, productionTypes, packingTypes, countTypes, lotNos, tipColours, bagColours, boxPackings] =
+    const [employees, productionTypes, packingTypes, countTypes, lotNos, tipColours, bagColours, boxPackings, scales] =
       await Promise.all([
         loadEmployees(pool, companyCode, date),
         pool.request().query(
@@ -64,6 +64,7 @@ export const getOptions = async (req, res) => {
         pool.request().execute("sp_TipColour_GetAll"),
         pool.request().execute("sp_BagColour_GetAll"),
         pool.request().execute("sp_BoxPacking_GetAll"),
+        pool.request().query("Select ScaleCode, ScaleName from tbl_Scale Order by ScaleName"),
       ]);
 
     return sendSuccess(res, {
@@ -76,6 +77,7 @@ export const getOptions = async (req, res) => {
       tipColours: opt(tipColours, "TipColourCode", "TipColour"),
       bagColours: opt(bagColours, "BagColourCode", "BagColour"),
       boxPackings: opt(boxPackings, "BoxPackingCode", "BoxPackingName"),
+      scales: opt(scales, "ScaleCode", "ScaleName"),
     });
   } catch (err) {
     console.error("DB Error (YarnFixing.getOptions):", err);
@@ -142,9 +144,10 @@ export const create = async (req, res) => {
       if (toInt(d.ProductionTypeCode) <= 0) return sendError(res, "Select the Production Type", 400);
       if (toInt(d.LotNoCode) <= 0) return sendError(res, "Select the Lot No", 400);
       if (toInt(d.CountTypeCode) <= 0) return sendError(res, "Select the Count Type", 400);
-      if (toInt(d.TipColourCode) <= 0) return sendError(res, "Select the Tip Colour", 400);
       if (toInt(d.BoxPackingCode) <= 0) return sendError(res, "Select the Box Packing", 400);
+      if (toInt(d.ScaleCode) <= 0) return sendError(res, "Select the Scale", 400);
       if (toInt(d.ConeCount) <= 0) return sendError(res, "Enter the No. of Cones", 400);
+      if (toInt(d.TipColourCode) <= 0) return sendError(res, "Select the Tip Colour", 400);
       const key = `${toInt(d.CountTypeCode)}|${toInt(d.LotNoCode)}`;
       if (seen.has(key)) return sendError(res, "Already exist the Count", 400);
       seen.add(key);
@@ -179,6 +182,7 @@ export const create = async (req, res) => {
       line.input("CompanyCode", sql.Int, companyCode);
       line.input("TipColourCode", sql.Int, toInt(d.TipColourCode));
       line.input("BoxPackingCode", sql.Int, toInt(d.BoxPackingCode));
+      line.input("ScaleCode", sql.Int, toInt(d.ScaleCode));
       await line.execute("sp_YarnFixingDetails_Add");
 
       // Persist a typed tolerance back onto the count-type master (btnAdd side effect).

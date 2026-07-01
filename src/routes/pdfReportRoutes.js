@@ -3,14 +3,6 @@ import { getSchedulePendApproval } from "../controllers/mechanical.controller.js
 import { authenticate } from "../middleware/authMiddleware.js";
 // import { getDepartmentAndShiftData, getEmployeeAllotmentDetails, getUniqueEmployeeAllotments } from "../controllers/employeeAllotment.controller.js";
 import {
-  handleReport,
-  handleSupplierWiseReport,
-  handleItemWiseReport,
-  handleCategoryWiseReport,
-  handleCostHeadWiseReport,
-  handlePendingCategoryWiseReport,
-  handlePendingItemWiseReport,
-  handlePendingSupplierWiseReport,
   handleInwardDateWiseReport,
   handleInwardSupplierWiseReport,
   handleInwardItemWiseReport,
@@ -63,21 +55,33 @@ import {
   handleGrnApprovalPendingReport,
   handleServiceBillPassingDateWiseReport,
   handleServiceBillPassingSupplierWiseReport,
+<<<<<<< Updated upstream
+=======
   handlePurchaseReturnDateWiseReport,
   handlePurchaseReturnSupplierWiseReport,
+  handleYarnMasterReport,
+  handleYarnProductionReport,
+  handleYarnProductionOptions,
+  handleYarnSalesOrderReportMulti,
+  handleYarnSalesOrderReportOptions,
+  handleYarnInvoiceReportMulti,
+  handleYarnInvoiceReportOptions,
+  handleYarnAgentCommissionReportMulti,
+  handleYarnAgentCommissionReportOptions,
+  handleYarnSalesOrderPendingMulti,
+  handleYarnSalesOrderPendingOptions,
+  handleYarnPurchaseOrderReportMulti,
+  handleYarnPurchaseOrderReportOptions,
+  handleYarnGrnReportMulti,
+  handleYarnGrnReportOptions,
+  handleYarnTransportInvoiceReportMulti,
+  handleYarnTransportInvoiceReportOptions,
+>>>>>>> Stashed changes
 } from "../controllers/pdfReport.controller.js";
 
 
 const router = express.Router();
 
-router.get('/purchaseorderdetails',authenticate, handleReport);
-router.get('/purchaseorder/supplierwise',authenticate, handleSupplierWiseReport);
-router.get('/purchaseorder/itemwise',authenticate, handleItemWiseReport);
-router.get('/purchaseorder/categorywise',authenticate, handleCategoryWiseReport);
-router.get('/purchaseorder/costheadwise',authenticate, handleCostHeadWiseReport);
-router.get('/purchaseorder/pending/categorywise',authenticate, handlePendingCategoryWiseReport);
-router.get('/purchaseorder/pending/itemwise',authenticate, handlePendingItemWiseReport);
-router.get('/purchaseorder/pending/supplierwise',authenticate, handlePendingSupplierWiseReport);
 router.get('/inward/datewise',authenticate, handleInwardDateWiseReport);
 router.get('/inward/supplierwise',authenticate, handleInwardSupplierWiseReport);
 router.get('/inward/itemwise',authenticate, handleInwardItemWiseReport);
@@ -125,13 +129,28 @@ router.get('/yarn/sales-day-book',authenticate, handleYarnSalesDayBookDateWiseRe
 router.get('/yarn/production/datewise',authenticate, handleYarnProductionDateWiseReport);
 router.get('/yarn/production/lotnowise',authenticate, handleYarnProductionLotNoWiseReport);
 router.get('/yarn/production/countwise',authenticate, handleYarnProductionCountWiseReport);
+router.get('/yarn/master',authenticate, handleYarnMasterReport);
+router.get('/yarn/production',authenticate, handleYarnProductionReport);
+router.get('/yarn/production-options',authenticate, handleYarnProductionOptions);
+router.get('/yarn/sales-order',authenticate, handleYarnSalesOrderReportMulti);
+router.get('/yarn/sales-order-options',authenticate, handleYarnSalesOrderReportOptions);
+router.get('/yarn/sales-invoice',authenticate, handleYarnInvoiceReportMulti);
+router.get('/yarn/sales-invoice-options',authenticate, handleYarnInvoiceReportOptions);
+router.get('/yarn/agent-commission',authenticate, handleYarnAgentCommissionReportMulti);
+router.get('/yarn/agent-commission-options',authenticate, handleYarnAgentCommissionReportOptions);
+router.get('/yarn/sales-order-pending',authenticate, handleYarnSalesOrderPendingMulti);
+router.get('/yarn/sales-order-pending-options',authenticate, handleYarnSalesOrderPendingOptions);
+router.get('/yarn/purchase-order-report',authenticate, handleYarnPurchaseOrderReportMulti);
+router.get('/yarn/purchase-order-report-options',authenticate, handleYarnPurchaseOrderReportOptions);
+router.get('/yarn/grn-report',authenticate, handleYarnGrnReportMulti);
+router.get('/yarn/grn-report-options',authenticate, handleYarnGrnReportOptions);
+router.get('/yarn/transport-invoice',authenticate, handleYarnTransportInvoiceReportMulti);
+router.get('/yarn/transport-invoice-options',authenticate, handleYarnTransportInvoiceReportOptions);
 router.get('/grn-bill-passing/datewise',authenticate, handleGrnBillPassingDateWiseReport);
 router.get('/grn-bill-passing/supplierwise',authenticate, handleGrnBillPassingSupplierWiseReport);
 router.get('/grn-approval/pending',authenticate, handleGrnApprovalPendingReport);
 router.get('/service-bill-passing/datewise',authenticate, handleServiceBillPassingDateWiseReport);
 router.get('/service-bill-passing/supplierwise',authenticate, handleServiceBillPassingSupplierWiseReport);
-router.get('/purchase-return/datewise',authenticate, handlePurchaseReturnDateWiseReport);
-router.get('/purchase-return/supplierwise',authenticate, handlePurchaseReturnSupplierWiseReport);
 // router.get('/employee-allotment-details/list',authenticate, getEmployeeAllotmentDetails);
 // router.get('/unique-employee-allotments/list',authenticate, getUniqueEmployeeAllotments);
 

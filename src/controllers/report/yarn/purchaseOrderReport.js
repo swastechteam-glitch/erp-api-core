@@ -375,8 +375,107 @@ const countWiseConfig = {
   ]
 };
 
+// ============================================================================
+// SUMMARY VARIANTS — one row per PO (sp_YarnPurchaseOrder_GetAll /
+// sp_YarnPurchaseOrder_GetAll_Pending). These carry per-PO TotalQty / TotalWeight
+// instead of detail lines. Mirror rptYanPurchaseOrderDateWise /
+// rptYarnPurchaseOrderSupplierWise / rptYanPurchaseOrderApprovalDateWise /
+// rptYanPurchaseOrderApprovalPendingDateWise.
+// ============================================================================
+const summaryTotals = {
+  qty: { totalKey: 'qty', totalFmt: intFmt, totalFn: r => dec(r, 'TotalQty') },
+  weight: { totalKey: 'weight', totalFmt: intFmt, totalFn: r => dec(r, 'TotalWeight') },
+};
+
+// DATE WISE (summary) — grouped by YarnPurchaseOrderDate
+const summaryDateWiseConfig = {
+  title: 'YARN PURCHASE ORDER - DATE WISE',
+  summaryGroupHeader: 'PO Date',
+  subLabelSpan: 5,
+  groupKey: (r) => isoDate(r.YarnPurchaseOrderDate) + '||' + ddmmyyyy(r.YarnPurchaseOrderDate),
+  groupLabel: (first) => 'Date : ' + ddmmyyyy(first.YarnPurchaseOrderDate),
+  columns: [
+    { header: 'S.No', width: 30, cell: sn() },
+    { header: 'Yarn PO No', width: 75, cell: txt(r => str(r, 'YarnPurchaseOrderNo'), 'center') },
+    { header: 'PO No', width: 90, cell: txt(r => str(r, 'PONo'), 'center') },
+    { header: 'PO Date', width: 80, cell: txt(r => ddmmyyyy(r.PODate), 'center') },
+    { header: 'Supplier', width: '*', cell: txt(r => str(r, 'SupplierName')) },
+    { header: 'Total Qty', width: 80, cell: intNum(r => dec(r, 'TotalQty')), ...summaryTotals.qty },
+    { header: 'Total Weight', width: 90, cell: intNum(r => dec(r, 'TotalWeight')), ...summaryTotals.weight }
+  ]
+};
+
+// SUPPLIER WISE (summary) — grouped by SupplierCode
+const summarySupplierWiseConfig = {
+  title: 'YARN PURCHASE ORDER - SUPPLIER WISE',
+  summaryGroupHeader: 'Supplier Name',
+  subLabelSpan: 5,
+  groupKey: (r) => (str(r, 'SupplierName') || '(Unknown Supplier)') + '||' + (r.SupplierCode != null ? String(r.SupplierCode) : ''),
+  groupLabel: (first) => 'Supplier : ' + (str(first, 'SupplierName') || '(Unknown Supplier)'),
+  columns: [
+    { header: 'S.No', width: 30, cell: sn() },
+    { header: 'Yarn PO No', width: 75, cell: txt(r => str(r, 'YarnPurchaseOrderNo'), 'center') },
+    { header: 'Yarn PO Date', width: 80, cell: txt(r => ddmmyyyy(r.YarnPurchaseOrderDate), 'center') },
+    { header: 'PO No', width: 90, cell: txt(r => str(r, 'PONo'), 'center') },
+    { header: 'PO Date', width: 80, cell: txt(r => ddmmyyyy(r.PODate), 'center') },
+    { header: 'Total Qty', width: 80, cell: intNum(r => dec(r, 'TotalQty')), ...summaryTotals.qty },
+    { header: 'Total Weight', width: 90, cell: intNum(r => dec(r, 'TotalWeight')), ...summaryTotals.weight }
+  ]
+};
+
+// APPROVAL (summary) — grouped by ApprovalDate, with approval user / node / date.
+// Mirrors rptYanPurchaseOrderApprovalDateWise (sp_YarnPurchaseOrder_GetAll @Approval=1).
+const approvalDateWiseConfig = {
+  title: 'YARN PURCHASE ORDER APPROVAL - DATE WISE',
+  summaryGroupHeader: 'Approval Date',
+  subLabelSpan: 6,
+  groupKey: (r) => isoDate(r.ApprovalDate) + '||' + ddmmyyyy(r.ApprovalDate),
+  groupLabel: (first) => 'Approval Date : ' + (ddmmyyyy(first.ApprovalDate) || '-'),
+  columns: [
+    { header: 'S.No', width: 26, cell: sn() },
+    { header: 'Yarn PO No', width: 60, cell: txt(r => str(r, 'YarnPurchaseOrderNo'), 'center') },
+    { header: 'Yarn PO Date', width: 65, cell: txt(r => ddmmyyyy(r.YarnPurchaseOrderDate), 'center') },
+    { header: 'PO No', width: 65, cell: txt(r => str(r, 'PONo'), 'center') },
+    { header: 'PO Date', width: 65, cell: txt(r => ddmmyyyy(r.PODate), 'center') },
+    { header: 'Supplier', width: '*', cell: txt(r => str(r, 'SupplierName')) },
+    { header: 'Total Qty', width: 55, cell: intNum(r => dec(r, 'TotalQty')), ...summaryTotals.qty },
+    { header: 'Total Weight', width: 60, cell: intNum(r => dec(r, 'TotalWeight')), ...summaryTotals.weight },
+    { header: 'Approval User', width: 75, cell: txt(r => str(r, 'UName')) },
+    { header: 'Approval Node', width: 70, cell: txt(r => str(r, 'NodeName')) },
+    { header: 'Approval Date', width: 70, cell: txt(r => ddmmyyyy(r.ApprovalDate), 'center') }
+  ]
+};
+
+// APPROVAL PENDING (summary) — grouped by YarnPurchaseOrderDate (pending rows have
+// no ApprovalDate). Mirrors rptYanPurchaseOrderApprovalPendingDateWise
+// (sp_YarnPurchaseOrder_GetAll_Pending @Approval=0).
+const pendingDateWiseConfig = {
+  title: 'YARN PURCHASE ORDER APPROVAL PENDING - DATE WISE',
+  summaryGroupHeader: 'PO Date',
+  subLabelSpan: 6,
+  groupKey: (r) => isoDate(r.YarnPurchaseOrderDate) + '||' + ddmmyyyy(r.YarnPurchaseOrderDate),
+  groupLabel: (first) => 'Date : ' + ddmmyyyy(first.YarnPurchaseOrderDate),
+  columns: [
+    { header: 'S.No', width: 30, cell: sn() },
+    { header: 'Yarn PO No', width: 70, cell: txt(r => str(r, 'YarnPurchaseOrderNo'), 'center') },
+    { header: 'Yarn PO Date', width: 75, cell: txt(r => ddmmyyyy(r.YarnPurchaseOrderDate), 'center') },
+    { header: 'PO No', width: 85, cell: txt(r => str(r, 'PONo'), 'center') },
+    { header: 'PO Date', width: 75, cell: txt(r => ddmmyyyy(r.PODate), 'center') },
+    { header: 'Supplier', width: '*', cell: txt(r => str(r, 'SupplierName')) },
+    { header: 'Total Qty', width: 80, cell: intNum(r => dec(r, 'TotalQty')), ...summaryTotals.qty },
+    { header: 'Total Weight', width: 90, cell: intNum(r => dec(r, 'TotalWeight')), ...summaryTotals.weight }
+  ]
+};
+
 export const dateWise = { buildDocDefinition: makeBuilder(dateWiseConfig) };
 export const supplierWise = { buildDocDefinition: makeBuilder(supplierWiseConfig) };
 export const countWise = { buildDocDefinition: makeBuilder(countWiseConfig) };
+export const summaryDateWise = { buildDocDefinition: makeBuilder(summaryDateWiseConfig) };
+export const summarySupplierWise = { buildDocDefinition: makeBuilder(summarySupplierWiseConfig) };
+export const approvalDateWise = { buildDocDefinition: makeBuilder(approvalDateWiseConfig) };
+export const pendingDateWise = { buildDocDefinition: makeBuilder(pendingDateWiseConfig) };
 
-export default { dateWise, supplierWise, countWise };
+export default {
+  dateWise, supplierWise, countWise,
+  summaryDateWise, summarySupplierWise, approvalDateWise, pendingDateWise
+};

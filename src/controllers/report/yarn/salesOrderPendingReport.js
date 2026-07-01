@@ -367,7 +367,87 @@ const summaryConfig = {
   ]
 };
 
+// ============================================================================
+// PENDING — matrix pivot: rows = each Sales Order (SO No / Date / Customer),
+// columns = Count, cell = Sum(Pending Qty). Mirrors rptSalesOrderPending.rdlc.
+// ============================================================================
+const pending = {
+  buildDocDefinition(rows, companyName, fromDate, toDate, companyLogo) {
+    const fs = 8;
+    const countKey = (r) => str(r, 'Count') || str(r, 'CountType') || '(Unknown)';
+    const counts = [...new Set((rows || []).map(countKey))].sort((a, b) => a.localeCompare(b));
+
+    // Group by Sales Order.
+    const map = new Map();
+    for (const r of rows || []) {
+      const k = String(r.SOCode ?? r.SONo ?? '');
+      if (!map.has(k)) map.set(k, { SONo: str(r, 'SONo'), SODate: r.SODate, Customer: str(r, 'CustomerName'), cells: {} });
+      const g = map.get(k);
+      const ck = countKey(r);
+      g.cells[ck] = (g.cells[ck] || 0) + dec(r, 'PenQty');
+    }
+    const keys = [...map.keys()].sort((a, b) => {
+      const da = new Date(map.get(a).SODate).getTime() || 0;
+      const db = new Date(map.get(b).SODate).getTime() || 0;
+      if (da !== db) return da - db;
+      return dec({ x: map.get(a).SONo }, 'x') - dec({ x: map.get(b).SONo }, 'x');
+    });
+
+    const hdr = (text, extra = {}) => ({ text, bold: true, fillColor: COLORS.headerFill, color: COLORS.headerText, alignment: 'center', fontSize: fs, ...extra });
+    const headers = ['S.No', 'SO No', 'SO Date', 'Customer', ...counts, 'Total'];
+    const widths = [28, 50, 55, '*', ...counts.map(() => 45), 50];
+    const body = [headers.map((h) => hdr(h))];
+
+    const colTotals = {};
+    counts.forEach((c) => (colTotals[c] = 0));
+    let grand = 0;
+    let sno = 1;
+    for (const k of keys) {
+      const g = map.get(k);
+      const zebra = sno % 2 === 0 ? COLORS.zebraFill : null;
+      let rowTotal = 0;
+      const cells = [
+        { text: String(sno), alignment: 'center', fontSize: fs, fillColor: zebra },
+        { text: g.SONo, alignment: 'center', fontSize: fs, fillColor: zebra },
+        { text: ddmmyyyy(g.SODate), alignment: 'center', fontSize: fs, fillColor: zebra },
+        { text: g.Customer, alignment: 'left', fontSize: fs, fillColor: zebra },
+      ];
+      for (const c of counts) {
+        const v = g.cells[c] || 0;
+        rowTotal += v;
+        colTotals[c] += v;
+        cells.push({ text: v ? intFmt(v) : '', alignment: 'right', fontSize: fs, fillColor: zebra });
+      }
+      grand += rowTotal;
+      cells.push({ text: intFmt(rowTotal), alignment: 'right', bold: true, fontSize: fs, fillColor: zebra });
+      body.push(cells);
+      sno++;
+    }
+    if (!keys.length) {
+      body.push([{ text: 'No records found', colSpan: headers.length, alignment: 'center', italics: true, fontSize: 9, margin: [0, 6, 0, 6] }, ...new Array(headers.length - 1).fill({})]);
+    } else {
+      const totalRow = [{ text: 'Total', colSpan: 4, alignment: 'right', bold: true, color: COLORS.grandText, fillColor: COLORS.grandFill, fontSize: fs }, {}, {}, {}];
+      for (const c of counts) totalRow.push({ text: intFmt(colTotals[c]), alignment: 'right', bold: true, color: COLORS.grandText, fillColor: COLORS.grandFill, fontSize: fs });
+      totalRow.push({ text: intFmt(grand), alignment: 'right', bold: true, color: COLORS.grandText, fillColor: COLORS.grandFill, fontSize: fs });
+      body.push(totalRow);
+    }
+
+    return {
+      pageSize: 'A4',
+      pageOrientation: 'landscape',
+      pageMargins: [15, 20, 15, 45],
+      footer: baseFooter,
+      content: [
+        titleBlock(companyName, 'PENDING ORDER DETAILS', `As On : ${ddmmyyyy(toDate)}`, companyLogo),
+        { table: { headerRows: 1, dontBreakRows: true, keepWithHeaderRows: 0, widths, body }, layout: baseLayout },
+      ],
+      defaultStyle: { font: 'Roboto', fontSize: fs, lineHeight: 1.2 },
+    };
+  },
+};
+
 export const detailed = { buildDocDefinition: makeBuilder(detailedConfig) };
 export const summary = { buildDocDefinition: makeBuilder(summaryConfig) };
+export { pending };
 
-export default { detailed, summary };
+export default { detailed, summary, pending };

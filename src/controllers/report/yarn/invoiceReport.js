@@ -45,6 +45,23 @@ const isoDate = (d) => {
 const taxOf = (r) =>
   dec(r, 'TNGSTValue') + dec(r, 'Item_CGSTAmount') + dec(r, 'Item_SGSTAmount') + dec(r, 'Item_IGSTAmount');
 
+// Resolve the first present, non-empty value among candidate columns. The
+// invoice detail SP surfaces the carrier columns (Vehicle / Driver / Transporter
+// / Delivery customer) under names that vary by build, so we try a few and fall
+// back to "(N/A)" — that way these grouped variants degrade to a single group
+// instead of crashing if a given SP build doesn't return the column.
+const firstVal = (row, cands) => {
+  for (const c of cands) {
+    const v = row[c];
+    if (v !== null && v !== undefined && String(v).trim() !== '') return v;
+  }
+  return '';
+};
+const VEHICLE_FIELDS = ['VehicleName', 'VehicleNo', 'VehicleNumber', 'Vehicle', 'RegistrationNumber'];
+const DRIVER_FIELDS = ['DriverName', 'Driver'];
+const TRANSPORTER_FIELDS = ['Transporter', 'TransporterName'];
+const DELIVERY_FIELDS = ['DelCustomer', 'DeliveryCustomer', 'DeliveryCustomerName', 'DeliveryName', 'DelCustomerName'];
+
 const COLORS = {
   headerFill: '#1A3C7B',
   headerText: '#FFFFFF',
@@ -439,6 +456,79 @@ const countWiseConfig = {
   ]
 };
 
+// Shared trailing numeric columns for the wide invoice "Sales Report" variants.
+// (Same set/widths as the Date/Customer/Count Wise configs above.)
+const invoiceNumericCols = (withRnd = true) => {
+  const cols = [
+    { header: 'Bags', width: 28, cell: intNum(r => dec(r, 'Qty')), ...totalColsBase.qty },
+    { header: 'Weight', width: 44, cell: num(r => dec(r, 'Weight'), 3), ...totalColsBase.weight },
+    { header: 'Rate', width: 38, cell: num(r => dec(r, 'RateEx'), 2) },
+    { header: 'Basic', width: 48, cell: num(r => dec(r, 'BasicAmount')), ...totalColsBase.basic },
+    { header: 'Tax', width: 44, cell: num(r => taxOf(r)), ...totalColsBase.tax },
+    { header: 'Fright', width: 34, cell: num(r => dec(r, 'Item_FreightAmount')), ...totalColsBase.freight },
+    { header: 'TCS Tax Amt', width: 40, cell: num(r => dec(r, 'TCSTaxableAmount')), ...totalColsBase.tcsTaxable },
+    { header: 'TCS %', width: 26, cell: num(r => dec(r, 'TCSPer'), 2) },
+    { header: 'TCS Amt', width: 36, cell: num(r => dec(r, 'Item_TSCAmount')), ...totalColsBase.tcsAmt },
+  ];
+  if (withRnd) cols.push({ header: 'RND', width: 24, cell: num(r => dec(r, 'RoundOff')), ...totalColsBase.roundOff });
+  cols.push({ header: 'Net Amount', width: 50, cell: num(r => dec(r, 'Item_NetAmount')), ...totalColsBase.netAmount });
+  return cols;
+};
+
+// ============================================================================
+// SALES TYPE WISE — grouped by SalesTypeCode (mirrors rptInvoiceSalesTypeWise /
+// the "Sales Type & Tax" variant).
+// ============================================================================
+const salesTypeWiseConfig = {
+  title: 'SALES REPORT - SALES TYPE WISE',
+  summaryGroupHeader: 'Sales Type',
+  subLabelSpan: 7,
+  groupKey: (r) => (str(r, 'SalesType') || '(Unknown)') + '||' + (r.SalesTypeCode != null ? String(r.SalesTypeCode) : ''),
+  groupLabel: (first) => 'Sales Type : ' + (str(first, 'SalesType') || '(Unknown)'),
+  columns: [
+    { header: 'S.No', width: 20, cell: sn() },
+    { header: 'SO No', width: 40, cell: txt(r => str(r, 'SONo'), 'center') },
+    { header: 'SO Date', width: 44, cell: txt(r => ddmmyyyy(r.SODate), 'center') },
+    { header: 'Inv. No', width: 42, cell: txt(r => str(r, 'strInvoiceNo'), 'center') },
+    { header: 'Inv. Date', width: 44, cell: txt(r => ddmmyyyy(r.BillDate), 'center') },
+    { header: 'Customer', width: '*', cell: txt(r => str(r, 'CustomerName')) },
+    { header: 'Count', width: 42, cell: txt(r => str(r, 'Count'), 'center') },
+    ...invoiceNumericCols(true)
+  ]
+};
+
+// ============================================================================
+// CARRIER-WISE variants (Vehicle / Driver / Transporter / Delivery). Same wide
+// row layout; only the grouping dimension changes. The grouping value is
+// resolved defensively (see firstVal) since the SP column names vary by build.
+// Mirrors rptInvoiceVehicleWise / *DriverWise / *TransporterWise / *DeliveryWise.
+// ============================================================================
+const carrierWiseConfig = ({ title, groupHeader, fields }) => ({
+  title,
+  summaryGroupHeader: groupHeader,
+  subLabelSpan: 7,
+  groupKey: (r) => {
+    const label = String(firstVal(r, fields) || '(N/A)');
+    return label + '||' + label;
+  },
+  groupLabel: (first) => groupHeader + ' : ' + String(firstVal(first, fields) || '(N/A)'),
+  columns: [
+    { header: 'S.No', width: 20, cell: sn() },
+    { header: 'SO No', width: 40, cell: txt(r => str(r, 'SONo'), 'center') },
+    { header: 'Inv. No', width: 42, cell: txt(r => str(r, 'strInvoiceNo'), 'center') },
+    { header: 'Inv. Date', width: 44, cell: txt(r => ddmmyyyy(r.BillDate), 'center') },
+    { header: 'Customer', width: '*', cell: txt(r => str(r, 'CustomerName')) },
+    { header: 'Sales Type', width: 48, cell: txt(r => str(r, 'SalesType')) },
+    { header: 'Count', width: 42, cell: txt(r => str(r, 'Count'), 'center') },
+    ...invoiceNumericCols(true)
+  ]
+});
+
+const vehicleWiseConfig = carrierWiseConfig({ title: 'SALES REPORT - VEHICLE WISE', groupHeader: 'Vehicle', fields: VEHICLE_FIELDS });
+const driverWiseConfig = carrierWiseConfig({ title: 'SALES REPORT - DRIVER WISE', groupHeader: 'Driver', fields: DRIVER_FIELDS });
+const transporterWiseConfig = carrierWiseConfig({ title: 'SALES REPORT - TRANSPORTER WISE', groupHeader: 'Transporter', fields: TRANSPORTER_FIELDS });
+const deliveryWiseConfig = carrierWiseConfig({ title: 'SALES REPORT - DELIVERY WISE', groupHeader: 'Delivery', fields: DELIVERY_FIELDS });
+
 // ============================================================================
 // AVG RATE COUNT WISE — one-row-per-count summary table.
 //   Columns: SNo | Count Name | Bags | KGS | Amount | Avg. Rate
@@ -528,6 +618,14 @@ export const dateWise = { buildDocDefinition: makeBuilder(dateWiseConfig) };
 export const customerWise = { buildDocDefinition: makeBuilder(customerWiseConfig) };
 export const agentWise = { buildDocDefinition: makeBuilder(agentWiseConfig) };
 export const countWise = { buildDocDefinition: makeBuilder(countWiseConfig) };
+export const salesTypeWise = { buildDocDefinition: makeBuilder(salesTypeWiseConfig) };
+export const vehicleWise = { buildDocDefinition: makeBuilder(vehicleWiseConfig) };
+export const driverWise = { buildDocDefinition: makeBuilder(driverWiseConfig) };
+export const transporterWise = { buildDocDefinition: makeBuilder(transporterWiseConfig) };
+export const deliveryWise = { buildDocDefinition: makeBuilder(deliveryWiseConfig) };
 export const avgRateCountWise = { buildDocDefinition: buildAvgRateCountWise };
 
-export default { dateWise, customerWise, agentWise, countWise, avgRateCountWise };
+export default {
+  dateWise, customerWise, agentWise, countWise, salesTypeWise,
+  vehicleWise, driverWise, transporterWise, deliveryWise, avgRateCountWise,
+};

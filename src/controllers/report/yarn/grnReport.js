@@ -320,6 +320,101 @@ const dateWiseConfig = {
   ]
 };
 
-export const dateWise = { buildDocDefinition: makeBuilder(dateWiseConfig) };
+// ============================================================================
+// DETAIL VARIANTS — one row per GRN bag line (sp_YarnGRNDetails_GetAll). These
+// carry per-line Qty / GrossWt / TareWt / NetWt. Mirror rptYanGRNDetailsDateWise
+// / rptYanGRNDetailsLotNoWise / rptYanGRNDetailsSupplierWise.
+// ============================================================================
+const detailTotals = {
+  qty: { totalKey: 'qty', totalFmt: intFmt, totalFn: r => dec(r, 'Qty') },
+  grossWt: { totalKey: 'grossWt', totalFmt: intFmt, totalFn: r => dec(r, 'GrossWt') },
+  tareWt: { totalKey: 'tareWt', totalFmt: intFmt, totalFn: r => dec(r, 'TareWt') },
+  netWt: { totalKey: 'netWt', totalFmt: intFmt, totalFn: r => dec(r, 'NetWt') }
+};
 
-export default { dateWise };
+// DATE WISE (Detailed) — grouped by YarnGRNDate; bag lines with Lot No + Supplier.
+const dateWiseDetailedConfig = {
+  title: 'YARN GRN DETAILS - DATE WISE',
+  summaryTitle: 'YARN GRN DETAILS SUMMARY - DATE WISE',
+  summaryGroupHeader: 'GRN Date',
+  subLabelSpan: 11,
+  groupKey: (r) => isoDate(r.YarnGRNDate) + '||' + ddmmyyyy(r.YarnGRNDate),
+  groupLabel: (first) => 'Date : ' + ddmmyyyy(first.YarnGRNDate),
+  columns: [
+    { header: 'S.No', width: 22, cell: sn() },
+    { header: 'Y.GRN No', width: 42, cell: txt(r => str(r, 'YarnGRNNo'), 'center') },
+    { header: 'Y.Pur Ord.No', width: 48, cell: txt(r => str(r, 'YarnPurchaseOrderNo'), 'center') },
+    { header: 'Y.Pur Ord.Date', width: 55, cell: txt(r => ddmmyyyy(r.YarnPurchaseOrderDate), 'center') },
+    { header: 'Goods In Pass No', width: 50, cell: txt(r => str(r, 'GoodsPassnumber'), 'center') },
+    { header: 'Bag No', width: 48, cell: txt(r => str(r, 'BagNo'), 'center') },
+    { header: 'Lot No', width: 50, cell: txt(r => str(r, 'LotNo'), 'center') },
+    { header: 'Supplier', width: '*', cell: txt(r => str(r, 'SupplierName')) },
+    { header: 'Count Type', width: '*', cell: txt(r => str(r, 'CountName')) },
+    { header: 'Yarn Prod.Type', width: 60, cell: txt(r => str(r, 'YarnProductionType')) },
+    { header: 'Yarn Packing Type', width: 60, cell: txt(r => str(r, 'YarnPackingType')) },
+    { header: 'Qty', width: 38, cell: intNum(r => dec(r, 'Qty')), ...detailTotals.qty },
+    { header: 'Gross Wt', width: 46, cell: intNum(r => dec(r, 'GrossWt')), ...detailTotals.grossWt },
+    { header: 'Tare Wt', width: 44, cell: intNum(r => dec(r, 'TareWt')), ...detailTotals.tareWt },
+    { header: 'Net Wt', width: 46, cell: intNum(r => dec(r, 'NetWt')), ...detailTotals.netWt }
+  ]
+};
+
+// LOT NO WISE — grouped by LotNoCode (Lot No shown in group header, not per row).
+const lotNoWiseConfig = {
+  title: 'YARN GRN DETAILS - LOT NO WISE',
+  summaryTitle: 'YARN GRN DETAILS SUMMARY - LOT NO WISE',
+  summaryGroupHeader: 'Lot No',
+  subLabelSpan: 10,
+  groupKey: (r) => (str(r, 'LotNo') || '(No Lot)') + '||' + (r.LotNoCode != null ? String(r.LotNoCode) : ''),
+  groupLabel: (first) => 'Lot No : ' + (str(first, 'LotNo') || '(No Lot)'),
+  columns: [
+    { header: 'S.No', width: 24, cell: sn() },
+    { header: 'Y.GRN No', width: 45, cell: txt(r => str(r, 'YarnGRNNo'), 'center') },
+    { header: 'Yarn GRN Date', width: 55, cell: txt(r => ddmmyyyy(r.YarnGRNDate), 'center') },
+    { header: 'Y.Pur Ord.No', width: 50, cell: txt(r => str(r, 'YarnPurchaseOrderNo'), 'center') },
+    { header: 'Y.Pur Ord.Date', width: 55, cell: txt(r => ddmmyyyy(r.YarnPurchaseOrderDate), 'center') },
+    { header: 'Goods In Pass No', width: 52, cell: txt(r => str(r, 'GoodsPassnumber'), 'center') },
+    { header: 'Bag No', width: 50, cell: txt(r => str(r, 'BagNo'), 'center') },
+    { header: 'Count Type', width: '*', cell: txt(r => str(r, 'CountName')) },
+    { header: 'Yarn Prod.Type', width: '*', cell: txt(r => str(r, 'YarnProductionType')) },
+    { header: 'Yarn Packing Type', width: 65, cell: txt(r => str(r, 'YarnPackingType')) },
+    { header: 'Qty', width: 40, cell: intNum(r => dec(r, 'Qty')), ...detailTotals.qty },
+    { header: 'Gross Wt', width: 48, cell: intNum(r => dec(r, 'GrossWt')), ...detailTotals.grossWt },
+    { header: 'Tare Wt', width: 48, cell: intNum(r => dec(r, 'TareWt')), ...detailTotals.tareWt },
+    { header: 'Net Wt', width: 48, cell: intNum(r => dec(r, 'NetWt')), ...detailTotals.netWt }
+  ]
+};
+
+// SUPPLIER WISE — grouped by SupplierCode (Supplier in group header, Lot No per row).
+const supplierWiseConfig = {
+  title: 'YARN GRN DETAILS - SUPPLIER WISE',
+  summaryTitle: 'YARN GRN DETAILS SUMMARY - SUPPLIER WISE',
+  summaryGroupHeader: 'Supplier Name',
+  subLabelSpan: 11,
+  groupKey: (r) => (str(r, 'SupplierName') || '(Unknown Supplier)') + '||' + (r.SupplierCode != null ? String(r.SupplierCode) : ''),
+  groupLabel: (first) => 'Supplier : ' + (str(first, 'SupplierName') || '(Unknown Supplier)'),
+  columns: [
+    { header: 'S.No', width: 22, cell: sn() },
+    { header: 'Y.GRN No', width: 42, cell: txt(r => str(r, 'YarnGRNNo'), 'center') },
+    { header: 'Yarn GRN Date', width: 52, cell: txt(r => ddmmyyyy(r.YarnGRNDate), 'center') },
+    { header: 'Y.Pur Ord.No', width: 48, cell: txt(r => str(r, 'YarnPurchaseOrderNo'), 'center') },
+    { header: 'Y.Pur Ord.Date', width: 52, cell: txt(r => ddmmyyyy(r.YarnPurchaseOrderDate), 'center') },
+    { header: 'Goods In Pass No', width: 48, cell: txt(r => str(r, 'GoodsPassnumber'), 'center') },
+    { header: 'Bag No', width: 48, cell: txt(r => str(r, 'BagNo'), 'center') },
+    { header: 'Lot No', width: 50, cell: txt(r => str(r, 'LotNo'), 'center') },
+    { header: 'Count Type', width: '*', cell: txt(r => str(r, 'CountName')) },
+    { header: 'Yarn Prod.Type', width: '*', cell: txt(r => str(r, 'YarnProductionType')) },
+    { header: 'Yarn Packing Type', width: 60, cell: txt(r => str(r, 'YarnPackingType')) },
+    { header: 'Qty', width: 38, cell: intNum(r => dec(r, 'Qty')), ...detailTotals.qty },
+    { header: 'Gross Wt', width: 44, cell: intNum(r => dec(r, 'GrossWt')), ...detailTotals.grossWt },
+    { header: 'Tare Wt', width: 44, cell: intNum(r => dec(r, 'TareWt')), ...detailTotals.tareWt },
+    { header: 'Net Wt', width: 44, cell: intNum(r => dec(r, 'NetWt')), ...detailTotals.netWt }
+  ]
+};
+
+export const dateWise = { buildDocDefinition: makeBuilder(dateWiseConfig) };
+export const dateWiseDetailed = { buildDocDefinition: makeBuilder(dateWiseDetailedConfig) };
+export const lotNoWise = { buildDocDefinition: makeBuilder(lotNoWiseConfig) };
+export const supplierWise = { buildDocDefinition: makeBuilder(supplierWiseConfig) };
+
+export default { dateWise, dateWiseDetailed, lotNoWise, supplierWise };

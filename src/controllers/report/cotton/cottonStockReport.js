@@ -1,7 +1,9 @@
-// Cotton Stock report — one controller, 3 modes:
+// Cotton Stock report — one controller, 4 modes:
 //   ?groupBy=variety   (default) — grouped by RawMaterialName  (Variety / Item Wise)
 //   ?groupBy=withvalue            — same grouping, adds Value columns
-//   ?groupBy=station              — grouped by StationName     (newly added)
+//   ?groupBy=station              — grouped by StationName
+//   ?groupBy=rawmaterial          — grouped by RawMaterialName, With-Value layout
+//                                   (legacy "Raw Material" radio on the Stock screen)
 //
 // SP: web_sp_Cotton_Stock (CompanyCode, FromDate, ToDate)
 
@@ -28,6 +30,12 @@ const GROUP_CONFIGS = {
     fileName: 'CottonStock_WithValue',
     groupKey: (r) => str(r, 'RawMaterialName') || '(Unknown Variety)',
     labelHeader: 'Variety'
+  },
+  rawmaterial: {
+    title: 'COTTON STOCK - RAW MATERIAL WISE',
+    fileName: 'CottonStock_RawMaterialWise',
+    groupKey: (r) => str(r, 'RawMaterialName') || '(Unknown Raw Material)',
+    labelHeader: 'Raw Material'
   }
 };
 
@@ -374,13 +382,15 @@ function pickMode(query) {
   const raw = (query.groupBy || 'variety').toLowerCase();
   if (raw === 'withvalue' || raw === 'with-value' || raw === 'value') return 'withvalue';
   if (raw === 'station') return 'station';
+  if (raw === 'rawmaterial' || raw === 'raw-material' || raw === 'rm') return 'rawmaterial';
   return 'variety';
 }
 
 function buildDocDefinition(ctx) {
   const mode = pickMode(ctx.query);
   const cfg = GROUP_CONFIGS[mode];
-  if (mode === 'withvalue') return buildWithValueDoc({ ...ctx, cfg });
+  // Raw Material wise reuses the With-Value column layout, grouped by RawMaterialName.
+  if (mode === 'withvalue' || mode === 'rawmaterial') return buildWithValueDoc({ ...ctx, cfg });
   return buildPlainDoc({ ...ctx, cfg });
 }
 

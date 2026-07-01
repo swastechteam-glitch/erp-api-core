@@ -237,7 +237,7 @@ export function footerBlock(currentPage, pageCount) {
 // Build a page-level pdfmake doc skeleton. When `summary` is provided, the
 // summary page is rendered FIRST and the detail title block / tables follow on
 // a new page (pageBreak before the detail title).
-export function buildPage({ companyName, companyLogo, title, fromDate, toDate, tables, summary }) {
+export function buildPage({ companyName, companyLogo, title, fromDate, toDate, tables, summary, orientation = 'landscape' }) {
   const hasSummary = Array.isArray(summary) && summary.length > 0;
   const content = [];
 
@@ -251,7 +251,9 @@ export function buildPage({ companyName, companyLogo, title, fromDate, toDate, t
 
   return {
     pageSize: 'A4',
-    pageOrientation: 'landscape',
+    // Default landscape (most reports are wide). Pass orientation: 'portrait'
+    // for narrow reports that mirror a portrait RDLC (e.g. GRN Without Issue).
+    pageOrientation: orientation,
     pageMargins: [15, 20, 15, 45],
     footer: (currentPage, pageCount) => footerBlock(currentPage, pageCount),
     content,
@@ -438,10 +440,168 @@ export function buildGroupSummaryPage({ companyName, companyLogo, fromDate, toDa
   ];
 }
 
+// ----------------------------------------------------------------------------
+// Shared grouped detail-report renderer — the canonical way to build a grouped
+// report (Issue, Purchase Return, …). Use this instead of hand-rolling a
+// per-report grouped table.
+//
+// STRICT RULE (applies to ALL modules / ALL reports): a field used to GROUP the
+// report is shown in the group HEADER and is NEVER repeated as a column in the
+// detail rows. Declare the grouped field's column key(s) on the level via
+// `colKey`; the renderer drops those columns from the rows automatically. If the
+// dropped column was the flexible `*` column, the first remaining text column is
+// promoted to `*` so the table still fills the page.
+//
+//   cfg = {
+//     title, cols, starKey, dense?, continuousSno?, orientation?,
+//     totalKeys: ['qty', 'amount'],          // column keys summed (sub + grand)
+//     levels: [{ key, label, totalLabel, sort?, colKey? }, ...],  // outer → inner
+//   }
+//   column = { key, header, width, align, num?, wrap?, serial?, get(row[, sno]) }
+//     • serial:true → the running S.No column (value supplied by the renderer)
+//     • num         → decimal places (also marks the column numeric/summable)
+//     • wrap        → chars/line, drives per-row vertical centering
+//     • width '*'   → the single flexible column (exactly one per config)
+//   `continuousSno:true` numbers rows 1..N across all groups (else resets per
+//   innermost group). `dense:true` uses 7pt + tight padding for wide grids.
+// ----------------------------------------------------------------------------
+export const reportLevel = (key, label, totalLabel, sort, colKey) =>
+  ({ key, label, totalLabel, sort, colKey });
+
+const gSubStyle = (depth, fs) => ({
+  bold: true,
+  color: depth === 0 ? colors.subText : colors.groupText,
+  fillColor: depth === 0 ? colors.subFill : colors.groupFill,
+  fontSize: fs,
+});
+const gGrandStyle = (fs) => ({ bold: true, color: colors.grandText, fillColor: colors.grandFill, fontSize: fs });
+
+function gHeaderCell(text, fs) {
+  return { text, bold: true, fillColor: colors.headerFill, color: colors.headerText, alignment: 'center', fontSize: fs };
+}
+function gGroupHeaderRow(label, ncol, depth, fs) {
+  const fill = depth === 0 ? colors.groupFill : colors.subFill;
+  const color = depth === 0 ? colors.groupText : colors.subText;
+  const cells = [{ text: label, colSpan: ncol, bold: true, fillColor: fill, color, fontSize: fs + 1, margin: [2 + depth * 10, 3, 0, 3] }];
+  for (let i = 1; i < ncol; i++) cells.push({});
+  return cells;
+}
+function gTotalRow(label, totals, cols, totalKeys, style) {
+  const firstTotalIdx = cols.findIndex((c) => totalKeys.includes(c.key));
+  const span = firstTotalIdx < 0 ? cols.length : firstTotalIdx;
+  const cells = [{ text: label, colSpan: span, alignment: 'right', ...style }];
+  for (let i = 1; i < span; i++) cells.push({});
+  for (let i = span; i < cols.length; i++) {
+    const c = cols[i];
+    cells.push(totalKeys.includes(c.key)
+      ? { text: fmt(totals[c.key] || 0, c.num != null ? c.num : 2), alignment: 'right', ...style }
+      : { text: '', ...style });
+  }
+  return cells;
+}
+function gDetailRow(r, sno, cols, zebra, fs) {
+  const perCol = cols.map((c) => {
+    if (c.serial) return { text: String(sno), lines: 1, align: 'center' };
+    const raw = c.get(r, sno);
+    const text = c.num != null ? fmt(typeof raw === 'number' ? raw : Number(raw) || 0, c.num) : (raw == null ? '' : String(raw));
+    const lines = c.wrap ? estimateLines(text, c.wrap) : 1;
+    return { text, lines, align: c.align || 'left' };
+  });
+  const maxLines = Math.max(1, ...perCol.map((p) => p.lines));
+  return perCol.map((p) => ({ text: p.text, alignment: p.align, fontSize: fs, fillColor: zebra, margin: [0, topPadFor(maxLines, p.lines), 0, 0] }));
+}
+function gSumKeys(rows, totalKeys, cols) {
+  const t = {};
+  totalKeys.forEach((k) => (t[k] = 0));
+  for (const r of rows) for (const k of totalKeys) {
+    const c = cols.find((x) => x.key === k);
+    if (c) t[k] += Number(c.get(r)) || 0;
+  }
+  return t;
+}
+function gGroupRows(rows, keyFn) {
+  const map = new Map();
+  for (const r of rows) {
+    const k = keyFn(r);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(r);
+  }
+  return [...map.entries()].map(([key, rs]) => ({ key, rows: rs, sample: rs[0] }));
+}
+function gDenseLayout() {
+  const l = tableLayout();
+  l.paddingLeft = () => 2; l.paddingRight = () => 2; l.paddingTop = () => 3; l.paddingBottom = () => 3;
+  return l;
+}
+
+export function renderGroupedReport({ rows, cfg, companyName, companyLogo, fromDate, toDate }) {
+  const levels = cfg.levels || [];
+  // STRICT RULE: drop the grouped field's column(s) from the detail rows — they
+  // already appear in the group header.
+  const hidden = new Set();
+  for (const lv of levels) {
+    const ck = lv.colKey;
+    if (!ck) continue;
+    (Array.isArray(ck) ? ck : [ck]).forEach((k) => hidden.add(k));
+  }
+  const cols = (cfg.cols || []).filter((c) => !hidden.has(c.key));
+  const ncol = cols.length;
+  const fs = cfg.dense ? 7 : 8;
+  const layout = cfg.dense ? gDenseLayout() : tableLayout();
+  // Star column: the configured one, unless it was a (now hidden) grouped column
+  // — then promote the first remaining text column to the flexible width.
+  let starKey = cfg.starKey;
+  if (!cols.some((c) => c.key === starKey)) {
+    const fb = cols.find((c) => (c.align === 'left' || c.align == null) && c.num == null && !c.serial);
+    starKey = fb ? fb.key : null;
+  }
+  const widths = cols.map((c) => (c.key === starKey ? '*' : (c.width === '*' ? 60 : c.width)));
+  const totalKeys = (cfg.totalKeys || []).filter((k) => cols.some((c) => c.key === k));
+
+  const sorted = [...(rows || [])].sort((a, b) => {
+    for (const lv of levels) {
+      const va = lv.sort ? lv.sort(a) : lv.key(a);
+      const vb = lv.sort ? lv.sort(b) : lv.key(b);
+      if (va < vb) return -1;
+      if (va > vb) return 1;
+    }
+    return 0;
+  });
+
+  const body = [cols.map((c) => gHeaderCell(c.header, fs))];
+  let running = 0;
+  const walk = (subRows, depth) => {
+    if (depth === levels.length) {
+      subRows.forEach((r, i) => {
+        const sno = cfg.continuousSno ? ++running : i + 1;
+        body.push(gDetailRow(r, sno, cols, sno % 2 ? colors.zebraFill : null, fs));
+      });
+      return;
+    }
+    const lv = levels[depth];
+    for (const g of gGroupRows(subRows, lv.key)) {
+      body.push(gGroupHeaderRow(lv.label(g.sample), ncol, depth, fs));
+      walk(g.rows, depth + 1);
+      body.push(gTotalRow(lv.totalLabel(g.sample), gSumKeys(g.rows, totalKeys, cols), cols, totalKeys, gSubStyle(depth, fs)));
+    }
+  };
+  walk(sorted, 0);
+  if (totalKeys.length)
+    body.push(gTotalRow('Grand Total', gSumKeys(sorted, totalKeys, cols), cols, totalKeys, gGrandStyle(fs + 1)));
+
+  return buildPage({
+    companyName, companyLogo, title: cfg.title, fromDate, toDate,
+    orientation: cfg.orientation || 'landscape',
+    tables: [{ table: { headerRows: 1, dontBreakRows: true, widths, body }, layout }],
+  });
+}
+
 // Orchestrator — every cotton report controller calls this.
 // `spParams` (optional) returns an object of { paramName: { type, value } } for the SP.
 // Defaults to CompanyCode / FromDate / ToDate which covers most reports.
 export async function runReport(req, res, { spName, fileName, buildDocDefinition, spParams }) {
+  console.log(req.query, 'qury params check');
+  
   const t0 = Date.now();
   try {
     const subDbName = req.headers.subdbname;
