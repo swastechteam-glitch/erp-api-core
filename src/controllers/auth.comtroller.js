@@ -57,6 +57,18 @@ const getUserRoleInfo = async (pool, userCode) => {
   }
 };
 
+// Owner accounts that are ALWAYS treated as super admin, mirroring the Role
+// Access controller's isForcedSuperAdmin (UserCode 1/6, or UName SWASTEAM).
+// Login MUST honor this too: otherwise these accounts get isSuperAdmin=false in
+// their token, and the TPN2/LOCALHOST split LAN-gates them to the internal
+// server — so an admin can't work off campus (and can't even bootstrap RBAC).
+// Temporary until a real Super Admin role is assigned via the Role Access screen.
+const FORCE_SUPER_ADMIN_USER_CODES = [1, 6];
+const FORCE_SUPER_ADMIN_UNAMES = ["SWASTEAM"];
+const isForcedSuperAdminUser = (user) =>
+  FORCE_SUPER_ADMIN_USER_CODES.includes(Number(user?.UserCode)) ||
+  FORCE_SUPER_ADMIN_UNAMES.includes((user?.UName || "").toString().trim().toUpperCase());
+
 export const authLogin = async (req, res) => {
   try {
     const { UName, WebPassword, companyCode, branchCode, fyCode } = req.body;
@@ -110,7 +122,7 @@ export const authLogin = async (req, res) => {
         // Look up the RBAC role first: it decides the app shell on the web app
         // AND the TPN2 DB routing (super-admin -> external, others -> internal).
         const roleInfo = await getUserRoleInfo(pool, user.UserCode);
-        const isSuperAdmin = !!roleInfo?.IsSuperAdmin;
+        const isSuperAdmin = isForcedSuperAdminUser(user) || !!roleInfo?.IsSuperAdmin;
 
         const token = generateToken(
           user,
@@ -213,7 +225,7 @@ export const tokenCreate = async (req, res) => {
       //   }
 
       const roleInfo = await getUserRoleInfo(pool, user.UserCode);
-      const isSuperAdmin = !!roleInfo?.IsSuperAdmin;
+      const isSuperAdmin = isForcedSuperAdminUser(user) || !!roleInfo?.IsSuperAdmin;
       const token = generateToken(
         user,
         FyCode,
