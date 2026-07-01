@@ -40,6 +40,7 @@ export const employeeMasterOptions = async (req, res) => {
     const [
       branches, empGroups, categories, departments, designations,
       grades, batches, hostelTypes, agents, banks, genders, employees,
+      shifts, payTypes, reasons,
     ] = await Promise.all([
       q(`SELECT BranchCode, BranchName FROM tbl_Branch WHERE CompanyCode = ${companyCode} ORDER BY BranchName`),
       q(`SELECT EmpGroupCode, EmpGroupName FROM tbl_EmpGroup ORDER BY EmpGroupName`),
@@ -53,6 +54,10 @@ export const employeeMasterOptions = async (req, res) => {
       q(`SELECT BankCode, BankName FROM tbl_Bank ORDER BY BankName`),
       q(`SELECT SexCode, SexName FROM tbl_Sex ORDER BY SexName`),
       q(`SELECT EmployeeCode, str_EmployeeID FROM vw_Employee_New WHERE CompanyCode = ${companyCode} ORDER BY EmployeeID`),
+      // Attendance Detail Report rail (rptAttendanceDetails): Shift / Pay Type / Reason.
+      q(`SELECT ShiftCode, ShiftName FROM tbl_Shift WHERE CompanyCode = ${companyCode} ORDER BY ShiftName`),
+      q(`SELECT PayTypeCode, PayTypeName FROM tbl_PayType ORDER BY PayTypeName`),
+      q(`SELECT ManualEntryReasonCode, ManualEntryReason FROM tbl_ManualEntryReason ORDER BY ManualEntryReason`),
     ]);
 
     return res.json({
@@ -70,6 +75,9 @@ export const employeeMasterOptions = async (req, res) => {
         banks: map(banks, 'BankCode', 'BankName'),
         genders: map(genders, 'SexCode', 'SexName'),
         employees: map(employees, 'EmployeeCode', 'str_EmployeeID'),
+        shifts: map(shifts, 'ShiftCode', 'ShiftName'),
+        payTypes: map(payTypes, 'PayTypeCode', 'PayTypeName'),
+        reasons: map(reasons, 'ManualEntryReasonCode', 'ManualEntryReason'),
       },
     });
   } catch (err) {

@@ -117,7 +117,7 @@ GO
 
 /* --------------------- Seed / refresh tbl_web_Menu ----------------- *
    Upsert by MenuKey so labels/order stay current and re-runs are safe.
-   17 modules + 645 screens = 662 menus.
+   17 modules + 646 screens = 663 menus.
    KEEP IN SYNC with modules.config.js (modules) + menuData.js (screens).      */
 DECLARE @menu TABLE (MenuKey NVARCHAR(120), MenuLabel NVARCHAR(200), MenuType NVARCHAR(20), GroupName NVARCHAR(120), SortOrder INT);
 
@@ -783,7 +783,9 @@ INSERT INTO @menu (MenuKey, MenuLabel, MenuType, GroupName, SortOrder) VALUES
  ('rptCustomerJournalDetails','Customer Journal Details','screen','Finance',659),
  ('rptCustomerLedgerDetailed','Customer Ledger Detailed','screen','Finance',660),
  ('rptSupplierLedgerDetailed','Supplier Ledger Detailed','screen','Finance',661),
- ('rptFinancialStatement','Financial Statement','screen','Finance',662);
+ ('rptFinancialStatement','Financial Statement','screen','Finance',662),
+ ('rptMusterGenerate','Muster Generate','screen','Pay Roll',663),
+ ('rptSalaryGenerate','Salary Generate','screen','Pay Roll',664);
 
 MERGE dbo.tbl_web_Menu AS t
 USING @menu AS s ON t.MenuKey = s.MenuKey

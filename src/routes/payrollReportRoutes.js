@@ -36,12 +36,29 @@ import { attendanceLateInReport } from "../controllers/report/payroll/attendance
 import { attendanceManualEntryReport } from "../controllers/report/payroll/attendanceManualEntry.js";
 import { attendanceMisMatchReport } from "../controllers/report/payroll/attendanceMisMatch.js";
 import { attendanceMisPunchVsManualReport } from "../controllers/report/payroll/attendanceMisPunchVsManual.js";
+import { attendanceDetailsReport } from "../controllers/report/payroll/attendanceDetails.js";
+import { movementDetailsReport } from "../controllers/report/payroll/movementDetails.js";
+import { attendanceOverAllReport } from "../controllers/report/payroll/attendanceOverAll.js";
+import { leaveDetailsReport } from "../controllers/report/payroll/leaveDetails.js";
+import { attendanceDetailsGOTSReport } from "../controllers/report/payroll/attendanceDetailsGOTS.js";
 
 // Payroll -> Strength Report
 import { strengthAbstractReport } from "../controllers/report/payroll/strengthAbstract.js";
 
 // Payroll -> Costing Report
 import { payrollCostingReport } from "../controllers/report/payroll/costingReport.js";
+
+// Payroll -> Time Card
+import { timeCardReport } from "../controllers/report/payroll/timeCard.js";
+
+// Payroll -> Muster Report (rptMuster) + Muster Report ALL (rptMusterAll)
+import { musterReport, musterReportOptions, musterAllReport, musterAllReportOptions } from "../controllers/report/payroll/muster.js";
+
+// Payroll -> Form 25 (rptForm25) — statutory Muster Roll register
+import { form25Report, form25ReportOptions } from "../controllers/report/payroll/form25.js";
+
+// Payroll -> Monthly Salary Details (rptMonthlySalaryDetails)
+import { monthlySalaryReport, monthlySalaryReportOptions } from "../controllers/report/payroll/monthlySalary.js";
 
 const router = express.Router();
 
@@ -83,11 +100,54 @@ router.get('/attendance/late-in', authenticate, attendanceLateInReport);
 router.get('/attendance/manual-entry', authenticate, attendanceManualEntryReport);
 router.get('/attendance/mis-match', authenticate, attendanceMisMatchReport);
 router.get('/attendance/mispunch-vs-manual', authenticate, attendanceMisPunchVsManualReport);
+// Attendance Detail Report (rptAttendanceDetails) — one endpoint, ?groupBy=<reportType>
+// selects the layout (dateWise / punchingDetails / misPunch / employeeWise /
+// batchWise / batchWithDept / manualEntry / withOT / otDetails / abstract /
+// shiftAbstract / employeeGroup); ?status= drives @Attn.
+router.get('/attendance/details', authenticate, attendanceDetailsReport);
+// Movement Detail Report (rptMovementDetails) — ?groupBy=movement|employeeWise
+// picks the SP (sp_MovementDetails_GetAll / _GetByEmployee); ?OrderBy=0|1.
+router.get('/movement-details', authenticate, movementDetailsReport);
+// Attendance Over All (rptAttendanceOverAll) — ?groupBy=dayWise|monthWise|yearWise
+// working-days cross-tab (sp_EmpAtten_OverAll_DayWise / sp_EmpAtten_OverAll).
+router.get('/attendance-overall', authenticate, attendanceOverAllReport);
+// Leave Details Report (rptLeaveDetails) — sp_Employee_Attendance @Attn=7, summary
+// + per-employee detail; ?leaveAbove=<n> keeps employees over that leave count.
+router.get('/leave-details', authenticate, leaveDetailsReport);
+// Attendance Details GOTS (frmAttendanceDetails_GOTS) — ?groupBy=dateWise|misPunch;
+// dateWise → sp_Employee_Attendance_GOTS (Shift×Status matrix + detail),
+// misPunch → sp_Employee_Attendance @Attn=9. ?status= drives @Attn for dateWise.
+router.get('/attendance/details-gots', authenticate, attendanceDetailsGOTSReport);
 
 // Payroll -> Strength Report
 router.get('/strength/abstract', authenticate, strengthAbstractReport);
 
 // Payroll -> Costing Report
 router.get('/costing/abstract', authenticate, payrollCostingReport);
+
+// Payroll -> Time Card (rptTimeCard) — per-employee attendance time card,
+// sp_Employee_Attendance_GOTS @Attn=8; date range supplies @FromDate/@ToDate.
+router.get('/time-card', authenticate, timeCardReport);
+
+// Payroll -> Muster Report (rptMuster) — sp_Muster + sp_Muster_Title; one endpoint,
+// ?reportBy=0..11 picks the layout (muster grid / OT / summary / engagement).
+router.get('/muster', authenticate, musterReport);
+// Filter-rail lookup lists for the Muster Report screen (rptMuster.vb Bind_Data).
+router.get('/muster/options', authenticate, musterReportOptions);
+
+// Payroll -> Muster Report ALL (rptMusterAll) — regenerates (sp_Muster_Generate_All)
+// then sp_Muster_All + sp_Muster_Title_All; date-range driven, ?reportBy=0..3.
+router.get('/muster-all', authenticate, musterAllReport);
+router.get('/muster-all/options', authenticate, musterAllReportOptions);
+
+// Payroll -> Form 25 (rptForm25) — sp_Muster1 + sp_Muster_ShiftNo_Title;
+// statutory "FORM NO. 25" Muster Roll register, pay-period driven.
+router.get('/form25', authenticate, form25Report);
+router.get('/form25/options', authenticate, form25ReportOptions);
+
+// Payroll -> Monthly Salary Details (rptMonthlySalaryDetails) — sp_Salary_GetAll;
+// pay-period driven; ?reportType/reportName/reportFile pick the layout.
+router.get('/monthly-salary', authenticate, monthlySalaryReport);
+router.get('/monthly-salary/options', authenticate, monthlySalaryReportOptions);
 
 export default router;
