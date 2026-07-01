@@ -8,6 +8,7 @@ import {
   updateRole,
   deleteRole,
   getMenus,
+  syncMenus,
   getRoleMenus,
   saveRoleMenus,
   getUsers,
@@ -28,6 +29,9 @@ router.put("/roles/:roleCode", authenticate, requireSuperAdmin, updateRole);
 router.delete("/roles/:roleCode", authenticate, requireSuperAdmin, deleteRole);
 
 router.get("/menus", authenticate, requireSuperAdmin, getMenus);
+// Upsert the app's canonical menu catalog (insert new pages only). Called
+// automatically by the Role Access screen so new menus appear without re-seeding.
+router.post("/sync-menus", authenticate, requireSuperAdmin, syncMenus);
 
 router.get("/role-menus/:roleCode", authenticate, requireSuperAdmin, getRoleMenus);
 router.post("/role-menus", authenticate, requireSuperAdmin, saveRoleMenus);

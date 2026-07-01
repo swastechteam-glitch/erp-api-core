@@ -170,7 +170,12 @@ function makeBuilder(config) {
     const colCount = COLS.length;
     const fs = config.fontSize;
     const firstTotal = COLS.findIndex(c => c.total);
-    const dateLine = `From Date : ${ddmmyyyy(fromDate)}    To Date : ${ddmmyyyy(toDate)}`;
+    // Approval-Pending has no period (its SP takes only CompanyCode) — the RDLC
+    // shows no From/To line, so `noDateLine` blanks it here too.
+    const dateLine = config.noDateLine
+      ? ''
+      : `From Date : ${ddmmyyyy(fromDate)}    To Date : ${ddmmyyyy(toDate)}`;
+    const sortKey = config.rowSortKey || 'SalesReturnNo';
 
     const body = [headerCells(COLS, fs)];
 
@@ -208,7 +213,7 @@ function makeBuilder(config) {
 
       const sub = {};
       for (const c of COLS) if (c.total) sub[c.key] = 0;
-      const sorted = g.rows.slice().sort((a, b) => dec(a, 'SalesReturnNo') - dec(b, 'SalesReturnNo'));
+      const sorted = g.rows.slice().sort((a, b) => dec(a, sortKey) - dec(b, sortKey));
       let idx = 1;
       for (const r of sorted) {
         body.push(dataRow(r, idx, idx % 2 === 0 ? COLORS.zebraFill : null));
@@ -233,7 +238,8 @@ function makeBuilder(config) {
         ...summaryNodes,
         ...chartFromRows(rows, {
           groupKey: config.groupKey, groupLabel: config.groupLabel,
-          valueFn: (r) => dec(r, 'TotalNetWt'), valueHeader: 'Total Net Wt',
+          valueFn: (r) => dec(r, config.chartValueKey || 'TotalNetWt'),
+          valueHeader: config.chartValueHeader || 'Total Net Wt',
           groupHeader: config.summaryGroupHeader, digits: 2
         }),
         detailTitle,
@@ -254,6 +260,24 @@ const qty = { key: 'TotalQty', header: 'Total Qty', width: 55, align: 'right', k
 const gross = { key: 'TotalGrossWt', header: 'Total Gross Wt', width: 65, align: 'right', kind: 'kgs', total: true };
 const tare = { key: 'TotalTareWt', header: 'Total Tare Wt', width: 65, align: 'right', kind: 'kgs', total: true };
 const net = { key: 'TotalNetWt', header: 'Total Net Wt', width: 65, align: 'right', kind: 'kgs', total: true };
+
+// Approval-level trailing columns (sp_SalesReturnApproval_GetAll / _Pending):
+// approval user / node / date. Non-total text columns after the weight totals.
+const apprUser = { key: 'UName', header: 'Approval User', width: 70, align: 'left', kind: 'text' };
+const apprNode = { key: 'NodeName', header: 'Approval Node', width: 70, align: 'left', kind: 'text' };
+const apprDate = { key: 'C_Date', header: 'Approval Date', width: 62, align: 'center', kind: 'date' };
+
+// Bale/item-level columns (sp_SalesReturnDetails_GetAll) — the "(Detailed)" reports.
+const dQty = { key: 'Qty', header: 'Qty', width: 45, align: 'right', kind: 'int', total: true };
+const dGross = { key: 'GrossWt', header: 'Gross Wt', width: 60, align: 'right', kind: 'kgs', total: true };
+const dTare = { key: 'TareWt', header: 'Tare Wt', width: 60, align: 'right', kind: 'kgs', total: true };
+const dNet = { key: 'NetWt', header: 'Net Wt', width: 60, align: 'right', kind: 'kgs', total: true };
+const billNo = { header: 'Bill No', width: 60, align: 'left', key: 'BillNo', kind: 'text' };
+const billDate = { header: 'Bill Date', width: 60, align: 'center', key: 'BillDate', kind: 'date' };
+const partyBillNo = { header: 'Party Bill No', width: 62, align: 'left', key: 'PartyBillNo', kind: 'text' };
+const partyBillDate = { header: 'Party Bill Date', width: 62, align: 'center', key: 'PartyBillDate', kind: 'date' };
+const gatePassNo = { header: 'Gate Pass No', width: 55, align: 'center', key: 'GoodsPassnumber', kind: 'int' };
+const bagNo = { header: 'Bag No', width: 55, align: 'left', key: 'BagNo', kind: 'text' };
 
 // ============================================================================
 // DATE WISE — grouped by Sales Return Date
@@ -297,7 +321,103 @@ const customerWiseConfig = {
   ]
 };
 
+// ============================================================================
+// APPROVAL — grouped by Sales Return Date (sp_SalesReturnApproval_GetAll)
+//   rptSalesReturnApprovalDateWise.rdlc
+// ============================================================================
+const approvalConfig = {
+  title: 'SALES RETURN APPROVAL - DATE WISE',
+  summaryTitle: 'SALES RETURN APPROVAL SUMMARY - DATE WISE',
+  summaryGroupHeader: 'S.Rtn Date',
+  fontSize: 8,
+  groupKey: (r) => isoDate(r.SalesReturnDate),
+  groupLabel: (r) => 'Date : ' + ddmmyyyy(r.SalesReturnDate),
+  sortKeys: (a, b) => a.localeCompare(b),
+  columns: [
+    { header: 'S.No', width: 26, align: 'center', kind: 'sno' },
+    { header: 'S.Rtn No', width: 48, align: 'center', key: 'SalesReturnNo', kind: 'int' },
+    { header: 'Employee Name', width: '*', align: 'left', key: 'EmployeeName', kind: 'text' },
+    { header: 'Customer Name', width: '*', align: 'left', key: 'CustomerName', kind: 'text' },
+    { header: 'Delivery Customer', width: '*', align: 'left', key: 'DeliveryCustomerName', kind: 'text' },
+    bags, kgs, qty, gross, tare, net, apprUser, apprNode, apprDate
+  ]
+};
+
+// ============================================================================
+// APPROVAL PENDING — grouped by Sales Return Date (sp_SalesReturnApprovalPending)
+//   rptSalesReturnApprovalPendingDateWise.rdlc — SP takes only CompanyCode, so
+//   there is no date range on the report (noDateLine).
+// ============================================================================
+const approvalPendingConfig = {
+  title: 'SALES RETURN APPROVAL PENDING - DATE WISE',
+  summaryTitle: 'SALES RETURN APPROVAL PENDING SUMMARY - DATE WISE',
+  summaryGroupHeader: 'S.Rtn Date',
+  fontSize: 8,
+  noDateLine: true,
+  groupKey: (r) => isoDate(r.SalesReturnDate),
+  groupLabel: (r) => 'Date : ' + ddmmyyyy(r.SalesReturnDate),
+  sortKeys: (a, b) => a.localeCompare(b),
+  columns: [
+    { header: 'S.No', width: 26, align: 'center', kind: 'sno' },
+    { header: 'S.Rtn No', width: 48, align: 'center', key: 'SalesReturnNo', kind: 'int' },
+    { header: 'Employee Name', width: '*', align: 'left', key: 'EmployeeName', kind: 'text' },
+    { header: 'Customer Name', width: '*', align: 'left', key: 'CustomerName', kind: 'text' },
+    { header: 'Delivery Customer', width: '*', align: 'left', key: 'DeliveryCustomerName', kind: 'text' },
+    bags, kgs, qty, gross, tare, net, apprUser, apprNode, apprDate
+  ]
+};
+
+// ============================================================================
+// CUSTOMER WISE (DETAILED) — grouped by Customer (sp_SalesReturnDetails_GetAll)
+//   rptSalesReturnCustomerWiseDetails.rdlc — bale/item-level rows.
+// ============================================================================
+const customerWiseDetailedConfig = {
+  title: 'SALES RETURN DETAILS - CUSTOMER WISE',
+  summaryTitle: 'SALES RETURN DETAILS SUMMARY - CUSTOMER WISE',
+  summaryGroupHeader: 'Customer Name',
+  fontSize: 8,
+  chartValueKey: 'NetWt',
+  chartValueHeader: 'Net Wt',
+  groupKey: (r) => (r.CustomerCode != null ? String(r.CustomerCode) : '') + '||' + (str(r, 'CustomerName') || '(Unknown)'),
+  groupLabel: (r) => str(r, 'CustomerName') || '(Unknown)',
+  sortKeys: (a, b) => (a.split('||')[1] || '').localeCompare(b.split('||')[1] || ''),
+  columns: [
+    { header: 'S.No', width: 26, align: 'center', kind: 'sno' },
+    { header: 'S.Rtn No', width: 48, align: 'center', key: 'SalesReturnNo', kind: 'int' },
+    { header: 'S.Rtn Date', width: 60, align: 'center', key: 'SalesReturnDate', kind: 'date' },
+    { header: 'Employee Name', width: '*', align: 'left', key: 'EmployeeName', kind: 'text' },
+    billNo, billDate, partyBillNo, partyBillDate, gatePassNo, bagNo, dQty, dGross, dTare, dNet
+  ]
+};
+
+// ============================================================================
+// DATE WISE (DETAILED) — grouped by Sales Return Date (sp_SalesReturnDetails_GetAll)
+//   rptSalesReturnDateWiseDetails.rdlc — bale/item-level rows.
+// ============================================================================
+const dateWiseDetailedConfig = {
+  title: 'SALES RETURN DETAILS - DATE WISE',
+  summaryTitle: 'SALES RETURN DETAILS SUMMARY - DATE WISE',
+  summaryGroupHeader: 'S.Rtn Date',
+  fontSize: 8,
+  chartValueKey: 'NetWt',
+  chartValueHeader: 'Net Wt',
+  groupKey: (r) => isoDate(r.SalesReturnDate),
+  groupLabel: (r) => 'Date : ' + ddmmyyyy(r.SalesReturnDate),
+  sortKeys: (a, b) => a.localeCompare(b),
+  columns: [
+    { header: 'S.No', width: 26, align: 'center', kind: 'sno' },
+    { header: 'S.Rtn No', width: 48, align: 'center', key: 'SalesReturnNo', kind: 'int' },
+    { header: 'Employee Name', width: '*', align: 'left', key: 'EmployeeName', kind: 'text' },
+    { header: 'Customer Name', width: '*', align: 'left', key: 'CustomerName', kind: 'text' },
+    billNo, billDate, partyBillNo, partyBillDate, gatePassNo, bagNo, dQty, dGross, dTare, dNet
+  ]
+};
+
 export const dateWise = { buildDocDefinition: makeBuilder(dateWiseConfig) };
 export const customerWise = { buildDocDefinition: makeBuilder(customerWiseConfig) };
+export const approvalDateWise = { buildDocDefinition: makeBuilder(approvalConfig) };
+export const approvalPendingDateWise = { buildDocDefinition: makeBuilder(approvalPendingConfig) };
+export const customerWiseDetailed = { buildDocDefinition: makeBuilder(customerWiseDetailedConfig) };
+export const dateWiseDetailed = { buildDocDefinition: makeBuilder(dateWiseDetailedConfig) };
 
-export default { dateWise, customerWise };
+export default { dateWise, customerWise, approvalDateWise, approvalPendingDateWise, customerWiseDetailed, dateWiseDetailed };
