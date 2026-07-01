@@ -1,5 +1,4 @@
 import jwt from "jsonwebtoken";
-import { LAN_ROUTED_CLIENTS } from "../config/dbConfigMap.js";
 
 export const authenticate = (req, res, next) => {
   const authHeader = req.headers["authorization"];
@@ -25,17 +24,6 @@ export const authenticate = (req, res, next) => {
     req.headers["branchCode"] = decoded.branchCode || null;
     req.headers["companyCode"] = decoded.companyCode || null;
     req.user = decoded;
-
-    // Role-based DB routing: super-admins stay on the client's external server;
-    // every other user is routed to that client's internal LAN server so the
-    // app only works on campus. Covers TPN2 (and LOCALHOST, which mirrors it in
-    // dev). All getPool(req.headers.subdbname) call-sites pick this up; other
-    // clients are unaffected.
-    const clientKey = (req.headers.subdbname || "").toString().toUpperCase();
-    const lanKey = LAN_ROUTED_CLIENTS[clientKey];
-    if (lanKey && !decoded.isSuperAdmin) {
-      req.headers.subdbname = lanKey;
-    }
 
     next();
   } catch (err) {

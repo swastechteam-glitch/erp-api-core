@@ -48,30 +48,6 @@ const getUserRoleRow = async (pool, userCode) => {
   return r.recordset[0] || null;
 };
 
-// ── Hard-coded owner super admins (temporary) ───────────────────────────────
-// These accounts ALWAYS get full Role Access (treated as super admin) no matter
-// what role — if any — they're assigned. Requested for the SWASTEAM owner logins
-// (UserCode 1 and 6). Remove these once a real Super Admin role is assigned via
-// the Role Access screen. NOTE: the UserCode check is per-database, so in a
-// multi-tenant DB whoever holds UserCode 1/6 there also passes — the UName check
-// keeps it scoped to the actual owner account.
-const FORCE_SUPER_ADMIN_USER_CODES = [1, 6];
-const FORCE_SUPER_ADMIN_UNAMES = ["SWASTEAM"];
-
-const isForcedSuperAdmin = async (pool, userCode) => {
-  if (FORCE_SUPER_ADMIN_USER_CODES.includes(userCode)) return true;
-  try {
-    const r = await pool
-      .request()
-      .input("UserCode", sql.Int, userCode)
-      .query(`SELECT TOP 1 UName FROM dbo.vw_User WHERE UserCode = @UserCode`);
-    const uname = (r.recordset[0]?.UName || "").toString().trim().toUpperCase();
-    return FORCE_SUPER_ADMIN_UNAMES.includes(uname);
-  } catch {
-    return false; // user view missing / not configured -> fall through to role check
-  }
-};
-
 // Lazy migration: make sure the per-menu Add/Edit/Delete columns exist. Databases
 // set up before this feature won't have them — add them on first use so the app
 // self-heals (no manual SQL run). Idempotent, cached per subDB, and a no-op when
@@ -126,8 +102,6 @@ export const requireSuperAdmin = async (req, res, next) => {
     // Self-heal the A/E/D columns before any role-access write/read runs (this
     // guard wraps every super-admin endpoint).
     await ensureActionColumns(pool, req.headers.subdbname);
-    // Owner accounts (SWASTEAM / UserCode 1, 6) always pass.
-    if (await isForcedSuperAdmin(pool, userId)) return next();
     const role = await getUserRoleRow(pool, userId);
     if (role?.IsSuperAdmin) return next();
     // Bootstrap window: nobody is a super admin yet -> let the first user in.
@@ -187,20 +161,15 @@ export const getMyMenus = async (req, res) => {
     await ensureActionColumns(pool, req.headers.subdbname);
     const role = await getUserRoleRow(pool, userId);
 
-    // Owner accounts (SWASTEAM / UserCode 1, 6) get full super-admin access.
-    const forced = await isForcedSuperAdmin(pool, userId);
-
-    // Super admin, owner account, or first-run bootstrap sees every menu.
+    // Super admin or first-run bootstrap sees every menu.
     const bootstrap =
-      !role?.IsSuperAdmin && !forced && (await isBootstrapMode(pool)) === true;
-    if (role?.IsSuperAdmin || forced || bootstrap) {
+      !role?.IsSuperAdmin && (await isBootstrapMode(pool)) === true;
+    if (role?.IsSuperAdmin || bootstrap) {
       const all = await pool
         .request()
         .query(`SELECT MenuKey FROM dbo.tbl_web_Menu WHERE Status = 1`);
       return sendSuccess(res, {
-        roleName:
-          role?.RoleName ||
-          (forced ? "Super Admin" : bootstrap ? "Bootstrap Admin" : ""),
+        roleName: role?.RoleName || (bootstrap ? "Bootstrap Admin" : ""),
         isSuperAdmin: true,
         bootstrap,
         menuKeys: all.recordset.map((m) => m.MenuKey),
@@ -456,22 +425,30 @@ const normalizeMenus = (body) => {
 // so unknown keys are silently ignored. `table`/`ownerCol` are server constants.
 const insertMenuGrants = async (tx, table, ownerCol, ownerCode, menus) => {
   if (!menus.length) return;
-  const r = new sql.Request(tx);
-  r.input("Owner", sql.Int, ownerCode);
-  const rows = menus.map((m, i) => {
-    r.input(`k${i}`, sql.NVarChar, m.menuKey);
-    r.input(`a${i}`, sql.Bit, m.canAdd ? 1 : 0);
-    r.input(`e${i}`, sql.Bit, m.canEdit ? 1 : 0);
-    r.input(`d${i}`, sql.Bit, m.canDelete ? 1 : 0);
-    return `(@k${i},@a${i},@e${i},@d${i})`;
-  });
-  await r.query(`
-    INSERT INTO dbo.${table} (${ownerCol}, MenuCode, CanAdd, CanEdit, CanDelete)
-    SELECT @Owner, m.MenuCode, v.CanAdd, v.CanEdit, v.CanDelete
-    FROM dbo.tbl_web_Menu m
-    JOIN (VALUES ${rows.join(",")}) AS v(MenuKey, CanAdd, CanEdit, CanDelete)
-      ON v.MenuKey = m.MenuKey
-  `);
+  // SQL Server caps a request at 2100 parameters (and a VALUES list at 1000
+  // rows). Each menu contributes 4 params, so a role/user with many menus (600+)
+  // would blow past 2100 and abort the transaction with error 8003. Chunk the
+  // grants to stay well under both limits.
+  const CHUNK = 200;
+  for (let start = 0; start < menus.length; start += CHUNK) {
+    const batch = menus.slice(start, start + CHUNK);
+    const r = new sql.Request(tx);
+    r.input("Owner", sql.Int, ownerCode);
+    const rows = batch.map((m, i) => {
+      r.input(`k${i}`, sql.NVarChar, m.menuKey);
+      r.input(`a${i}`, sql.Bit, m.canAdd ? 1 : 0);
+      r.input(`e${i}`, sql.Bit, m.canEdit ? 1 : 0);
+      r.input(`d${i}`, sql.Bit, m.canDelete ? 1 : 0);
+      return `(@k${i},@a${i},@e${i},@d${i})`;
+    });
+    await r.query(`
+      INSERT INTO dbo.${table} (${ownerCol}, MenuCode, CanAdd, CanEdit, CanDelete)
+      SELECT @Owner, m.MenuCode, v.CanAdd, v.CanEdit, v.CanDelete
+      FROM dbo.tbl_web_Menu m
+      JOIN (VALUES ${rows.join(",")}) AS v(MenuKey, CanAdd, CanEdit, CanDelete)
+        ON v.MenuKey = m.MenuKey
+    `);
+  }
 };
 
 // ── POST /role-access/role-menus { roleCode, menus:[{menuKey,canAdd,...}] } ──
