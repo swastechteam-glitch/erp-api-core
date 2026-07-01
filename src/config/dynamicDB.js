@@ -1,5 +1,5 @@
 import sql from "mssql";
-import { clientDBConfig } from "./dbConfigMap.js";
+import { clientDBConfig, LAN_CONFIG_KEYS } from "./dbConfigMap.js";
 
 const connectionCache = new Map();
 
@@ -53,6 +53,15 @@ export async function getPool(subDBName) {
     // Clean cache if partial connection stored
     if (connectionCache.has(subDBName)) {
       connectionCache.delete(subDBName);
+    }
+
+    // LAN keys (e.g. TPN2_LAN) are internal servers used by regular (non-admin)
+    // users. If unreachable they are off the office network, so give a friendly
+    // message instead of the generic connection error.
+    if (LAN_CONFIG_KEYS.has(subDBName)) {
+      throw new Error(
+        "You can use this application only on our campus (office) network. Please connect to the office network and try again.",
+      );
     }
 
     // Send custom readable error upward

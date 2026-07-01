@@ -20,6 +20,20 @@ const requireSub = (req, res) => {
   return true;
 };
 
+// A query/DDL against an RBAC table that hasn't been deployed yet surfaces as
+// different SQL errors depending on the statement:
+//   SELECT / INSERT       -> 208  ("Invalid object name 'dbo.tbl_web_...'")
+//   ALTER TABLE (our lazy  -> 4902 ("Cannot find the object 'dbo.tbl_web_...'
+//   column self-heal)              because it does not exist or you do not
+//                                  have permissions.")
+// Treat all of them as "RBAC not configured" so the app degrades gracefully
+// (client falls back to showing all menus) instead of throwing a 500 and
+// locking the user out with "No access yet".
+const isMissingTableError = (err) =>
+  err?.number === 208 ||
+  err?.number === 4902 ||
+  /invalid object name|cannot find the object/i.test(err?.message || "");
+
 // Look up a user's role (used by my-menus and the super-admin guard).
 const getUserRoleRow = async (pool, userCode) => {
   const r = await pool
@@ -78,7 +92,7 @@ const ensureActionColumns = async (pool, subdbname) => {
   } catch (err) {
     // Tables not deployed yet (notConfigured) -> handled elsewhere; don't cache
     // so a later call (after the one-time setup) retries the column add.
-    if (err?.number === 208 || /Invalid object name/i.test(err?.message || "")) return;
+    if (isMissingTableError(err)) return;
     throw err;
   }
 };
@@ -97,7 +111,7 @@ const isBootstrapMode = async (pool) => {
     `);
     return r.recordset.length === 0; // no super admin assigned -> bootstrap
   } catch (err) {
-    if (err?.number === 208 || /Invalid object name/i.test(err?.message || "")) return null;
+    if (isMissingTableError(err)) return null;
     throw err;
   }
 };
@@ -146,7 +160,7 @@ const getUserMenuRows = async (pool, userCode) => {
       CanDelete: !!m.CanDelete,
     }));
   } catch (err) {
-    if (err?.number === 208 || /Invalid object name/i.test(err?.message || "")) {
+    if (isMissingTableError(err)) {
       return null; // table not created yet -> fall back to role menus
     }
     throw err;
@@ -242,7 +256,7 @@ export const getMyMenus = async (req, res) => {
   } catch (err) {
     // If the RBAC tables don't exist yet (feature not deployed), don't break the
     // app — report "not configured" so the client falls back to showing all menus.
-    if (err?.number === 208 || /Invalid object name/i.test(err?.message || "")) {
+    if (isMissingTableError(err)) {
       return sendSuccess(
         res,
         { roleName: "", isSuperAdmin: false, notConfigured: true, menuKeys: [] },
