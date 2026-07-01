@@ -28,7 +28,9 @@ export const authenticate = (req, res, next) => {
     next();
   } catch (err) {
     if (err.name === "TokenExpiredError") {
-      return res.status(403).json({ error: "Oops! Your session expired. Please log in again." });
+      // `code` lets the web app tell "access token expired" (silently refresh)
+      // apart from a genuinely bad/forbidden token (log out).
+      return res.status(403).json({ error: "Oops! Your session expired. Please log in again.", code: "TOKEN_EXPIRED" });
     }
     return res.status(401).json({ error: "Invalid token" });
   }

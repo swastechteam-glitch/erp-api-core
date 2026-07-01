@@ -364,6 +364,72 @@ export const getMenus = async (req, res) => {
   }
 };
 
+// ── POST /role-access/sync-menus  { menus:[{menuKey,menuLabel,menuType,groupName,sortOrder}] } ──
+// Upserts the app's canonical menu catalog (the web app builds it from its own
+// menu config) into tbl_web_Menu. INSERTS any menu keys that don't exist yet, so
+// a newly-added page shows up in Role Access automatically — no need to re-run
+// the seed SQL. INSERT-ONLY: existing rows (their labels, order, and role/user
+// grants) are never modified or deleted. Called automatically when a super admin
+// opens the Role Access screen.
+export const syncMenus = async (req, res) => {
+  try {
+    if (!requireSub(req, res)) return;
+    const incoming = Array.isArray(req.body?.menus) ? req.body.menus : [];
+
+    // Normalize + dedupe by MenuKey (MERGE needs a unique source key).
+    const seen = new Set();
+    const menus = [];
+    for (const m of incoming) {
+      const key = (m?.menuKey ?? "").toString().trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      menus.push({
+        menuKey: key.slice(0, 120),
+        menuLabel: ((m?.menuLabel ?? key).toString().trim() || key).slice(0, 200),
+        menuType: m?.menuType === "module" ? "module" : "screen",
+        groupName: m?.groupName ? m.groupName.toString().slice(0, 120) : null,
+        sortOrder: Number.isFinite(+m?.sortOrder) ? +m.sortOrder : 0,
+      });
+    }
+    if (!menus.length) return sendSuccess(res, { inserted: 0, total: 0 }, "No menus to sync");
+
+    const pool = await getPool(req.headers.subdbname);
+
+    // 5 params/row -> chunk to stay well under SQL Server's 2100-param / 1000-row limits.
+    const CHUNK = 200;
+    let inserted = 0;
+    for (let start = 0; start < menus.length; start += CHUNK) {
+      const batch = menus.slice(start, start + CHUNK);
+      const r = new sql.Request(pool);
+      const rows = batch.map((m, i) => {
+        r.input(`k${i}`, sql.NVarChar, m.menuKey);
+        r.input(`l${i}`, sql.NVarChar, m.menuLabel);
+        r.input(`t${i}`, sql.NVarChar, m.menuType);
+        r.input(`g${i}`, sql.NVarChar, m.groupName);
+        r.input(`o${i}`, sql.Int, m.sortOrder);
+        return `(@k${i},@l${i},@t${i},@g${i},@o${i})`;
+      });
+      const result = await r.query(`
+        MERGE dbo.tbl_web_Menu AS tgt
+        USING (VALUES ${rows.join(",")}) AS src(MenuKey, MenuLabel, MenuType, GroupName, SortOrder)
+          ON tgt.MenuKey = src.MenuKey
+        WHEN NOT MATCHED THEN
+          INSERT (MenuKey, MenuLabel, MenuType, GroupName, SortOrder, Status)
+          VALUES (src.MenuKey, src.MenuLabel, src.MenuType, src.GroupName, src.SortOrder, 1);
+      `);
+      inserted += result.rowsAffected?.[0] || 0;
+    }
+    return sendSuccess(res, { inserted, total: menus.length }, `Synced ${inserted} new menu(s)`);
+  } catch (err) {
+    // Tables not deployed yet -> the setup screen handles it; don't error out.
+    if (isMissingTableError(err)) {
+      return sendSuccess(res, { inserted: 0, notConfigured: true }, "RBAC not configured");
+    }
+    console.error("DB Error (syncMenus):", err);
+    return sendError(res, err);
+  }
+};
+
 // ── GET /role-access/role-menus/:roleCode -> [MenuKey, ...] ──────────────────
 export const getRoleMenus = async (req, res) => {
   try {

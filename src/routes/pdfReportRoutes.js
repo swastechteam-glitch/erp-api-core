@@ -44,6 +44,19 @@ import {
   handleYarnSalesOrderPendingSummaryReport,
   handleYarnSalesReturnDateWiseReport,
   handleYarnSalesReturnCustomerWiseReport,
+  handleYarnSalesReturnReportMulti,
+  handleYarnSalesReturnReportOptions,
+  handleYarnRealisationReportMulti,
+  handleYarnStockBagReportMulti,
+  handleYarnStockBagReportOptions,
+  handleYarnGatePassReport,
+  handleYarnGatePassReportOptions,
+  handleYarnRG1ReportMulti,
+  handleYarnRG1ReportOptions,
+  handleYarnInternalTransferReportMulti,
+  handleYarnInternalTransferReportOptions,
+  handleSalesDayBookDetailsReport,
+  handleSalesDayBookDetailsReportOptions,
   handleYarnAgentCommissionDateWiseReport,
   handleYarnAgentCommissionAgentWiseReport,
   handleYarnSalesDayBookDateWiseReport,
@@ -118,6 +131,19 @@ router.get('/yarn/sales-order-pending/detailed',authenticate, handleYarnSalesOrd
 router.get('/yarn/sales-order-pending/summary',authenticate, handleYarnSalesOrderPendingSummaryReport);
 router.get('/yarn/sales-return/datewise',authenticate, handleYarnSalesReturnDateWiseReport);
 router.get('/yarn/sales-return/customerwise',authenticate, handleYarnSalesReturnCustomerWiseReport);
+router.get('/yarn/sales-return',authenticate, handleYarnSalesReturnReportMulti);
+router.get('/yarn/sales-return-options',authenticate, handleYarnSalesReturnReportOptions);
+router.get('/yarn/yarn-realisation',authenticate, handleYarnRealisationReportMulti);
+router.get('/yarn/stock-bag',authenticate, handleYarnStockBagReportMulti);
+router.get('/yarn/stock-bag-options',authenticate, handleYarnStockBagReportOptions);
+router.get('/yarn/gate-pass',authenticate, handleYarnGatePassReport);
+router.get('/yarn/gate-pass-options',authenticate, handleYarnGatePassReportOptions);
+router.get('/yarn/rg1',authenticate, handleYarnRG1ReportMulti);
+router.get('/yarn/rg1-options',authenticate, handleYarnRG1ReportOptions);
+router.get('/yarn/internal-transfer',authenticate, handleYarnInternalTransferReportMulti);
+router.get('/yarn/internal-transfer-options',authenticate, handleYarnInternalTransferReportOptions);
+router.get('/yarn/sales-day-book-details',authenticate, handleSalesDayBookDetailsReport);
+router.get('/yarn/sales-day-book-details-options',authenticate, handleSalesDayBookDetailsReportOptions);
 router.get('/yarn/agent-commission/datewise',authenticate, handleYarnAgentCommissionDateWiseReport);
 router.get('/yarn/agent-commission/agentwise',authenticate, handleYarnAgentCommissionAgentWiseReport);
 router.get('/yarn/sales-day-book',authenticate, handleYarnSalesDayBookDateWiseReport);

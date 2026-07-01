@@ -74,7 +74,7 @@ export const getOptions = async (req, res) => {
       salesIncharges: opt(salesIncharges, "SalesInchargeCode", "SalesInchargeName"),
       salesTypes: opt(salesTypes, "SalesTypeCode", "SalesType"),
       otherCharges: opt(otherCharges, "OtherChargesCode", "OtherCharges"),
-      countTypes: opt(countTypes, "CountTypeCode", "CountName"),
+      countTypes: opt(countTypes, "CountTypeCode", "CountType"),
       lotNos: opt(lotNos, "LotNoCode", "LotNo"),
       deliveryCustomers: opt(deliveryCustomers, "CustomerCode", "CustomerName"),
       qualityStds: opt(qualityStds, "CQTSTDCode", "CQTSTDName"),

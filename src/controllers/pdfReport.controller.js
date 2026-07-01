@@ -22,6 +22,12 @@ import yarnSalesDayBookReport from './report/yarn/salesDayBookReport.js'
 import yarnProductionReport from './report/yarn/productionReport.js'
 import yarnProductionBagReports from './report/yarn/productionBagReports.js'
 import yarnMasterReports from './report/yarn/masterReports.js'
+import yarnRealisationReport from './report/yarn/yarnRealisationReport.js'
+import yarnStockBagReport from './report/yarn/stockBagReport.js'
+import yarnGatePassReport from './report/yarn/gatePassReport.js'
+import yarnRG1Report from './report/yarn/rg1Report.js'
+import yarnInternalTransferReport from './report/yarn/internalTransferReport.js'
+import salesDayBookDetailsReport from './report/yarn/salesDayBookDetailsReport.js'
 
 const fontDescriptors = {
   Roboto: {
@@ -1127,6 +1133,664 @@ export const handleYarnSalesReturnCustomerWiseReport = (req, res) => runReport(r
   reportModule: yarnSalesReturnReport.customerWise,
   fileName: 'YarnSalesReturn_CustomerWise'
 });
+
+// ---------------------------------------------------------------------------
+// Yarn Sales Return Reports (rptSalesReturnDetailsDateWise). One screen, six
+// report types + a date range + Company + Customer / Employee multi-selects.
+// The report type picks BOTH the SP and the layout, exactly like the VB
+// DynamicReportType branch:
+//   approval          -> sp_SalesReturnApproval_GetAll   (rptSalesReturnApprovalDateWise)
+//   approval-pending  -> sp_SalesReturnApprovalPending   (rptSalesReturnApprovalPendingDateWise) — CompanyCode only, no dates
+//   customer          -> sp_SalesReturn_GetAll           (rptSalesReturnCustomerWise)
+//   customer-detailed -> sp_SalesReturnDetails_GetAll    (rptSalesReturnCustomerWiseDetails)
+//   date              -> sp_SalesReturn_GetAll           (rptSalesReturnDateWise)
+//   date-detailed     -> sp_SalesReturnDetails_GetAll    (rptSalesReturnDateWiseDetails)
+// Rows are then filtered IN JS by the selected customer/employee codes — exactly
+// as the VB does client-side (DataResult.Select("CustomerCode IN (...)") etc.).
+// ---------------------------------------------------------------------------
+function filterYarnSalesReturnRows(rows, q) {
+  if (!rows || !rows.length) return rows || [];
+  const specs = [
+    ['customerCodes', 'CustomerCode'],
+    ['employeeCodes', 'EmployeeCode'],
+  ];
+  let out = rows;
+  for (const [param, col] of specs) {
+    const raw = String(q[param] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (!raw.length) continue;
+    if (!(col in (out[0] || {}))) continue; // column not in this SP's result → skip (VB-safe)
+    const set = new Set(raw.map(String));
+    out = out.filter((r) => set.has(String(r[col])));
+  }
+  return out;
+}
+
+async function runYarnSalesReturnReport(req, res, { spName, reportModule, fileName, noDateParams }) {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const pool = await getPool(subDbName);
+    const p = readParams(req);
+
+    const spReq = pool.request();
+    spReq.input('CompanyCode', sql.Int, parseInt(p.CompanyCode) || 0);
+    // Approval-Pending's SP takes only @CompanyCode (the VB never binds dates).
+    if (!noDateParams) {
+      spReq.input('FromDate', sql.DateTime, p.FromDate ? new Date(p.FromDate) : null);
+      spReq.input('ToDate', sql.DateTime, p.ToDate ? new Date(p.ToDate) : null);
+    }
+    const spResult = await spReq.execute(spName);
+
+    const rows = filterYarnSalesReturnRows(spResult.recordset || [], req.query);
+    const company = await getCompanyInfo(pool, p.CompanyCode);
+
+    const docDef = reportModule.buildDocDefinition(rows, company.name, p.FromDate, p.ToDate, company.logo);
+    addLogoToTitles(docDef, company.name, company.logo);
+    const pdfBuffer = await renderPdf(docDef);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${fileName}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error(err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+}
+
+const YARN_SALES_RETURN_REPORT = {
+  approval:            { sp: 'sp_SalesReturnApproval_GetAll', mod: 'approvalDateWise',        file: 'YarnSalesReturn_Approval' },
+  'approval-pending':  { sp: 'sp_SalesReturnApprovalPending', mod: 'approvalPendingDateWise', file: 'YarnSalesReturn_ApprovalPending', noDateParams: true },
+  customer:            { sp: 'sp_SalesReturn_GetAll',         mod: 'customerWise',            file: 'YarnSalesReturn_CustomerWise' },
+  'customer-detailed': { sp: 'sp_SalesReturnDetails_GetAll',  mod: 'customerWiseDetailed',    file: 'YarnSalesReturn_CustomerWiseDetailed' },
+  date:                { sp: 'sp_SalesReturn_GetAll',         mod: 'dateWise',                file: 'YarnSalesReturn_DateWise' },
+  'date-detailed':     { sp: 'sp_SalesReturnDetails_GetAll',  mod: 'dateWiseDetailed',        file: 'YarnSalesReturn_DateWiseDetailed' },
+};
+
+// GET /report/yarn/sales-return?groupBy=<type>&FromDate=&ToDate=&CompanyCode=&customerCodes=&employeeCodes=
+export const handleYarnSalesReturnReportMulti = (req, res) => {
+  const type = String(req.query.groupBy || req.query.type || '').trim();
+  const def = YARN_SALES_RETURN_REPORT[type];
+  if (!def) return res.status(400).type('text/plain').send('Invalid or missing report type');
+  return runYarnSalesReturnReport(req, res, {
+    spName: def.sp,
+    reportModule: yarnSalesReturnReport[def.mod],
+    fileName: def.file,
+    noDateParams: def.noDateParams,
+  });
+};
+
+// GET /report/yarn/sales-return-options — Customer / Employee dropdowns.
+export const handleYarnSalesReturnReportOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).json({ error: 'Missing subDBName' });
+    const pool = await getPool(subDbName);
+    const q = (text) => pool.request().query(text).then((r) => r.recordset || []);
+    const [cust, emp] = await Promise.all([
+      q('SELECT CustomerCode, CustomerName FROM vw_Customer'),
+      q('SELECT EmployeeCode, EmployeeName FROM tbl_Employee'),
+    ]);
+    res.json({
+      data: {
+        customers: cust.map((r) => ({ value: r.CustomerCode, label: r.CustomerName })),
+        employees: emp.map((r) => ({ value: r.EmployeeCode, label: r.EmployeeName })),
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Yarn Realisation Reports (rptProcessStock_Print). One screen, a Company + date
+// range + three report types. Each type has its OWN stored-proc set (mirrors the
+// VB radio branch), so this dispatches to a dedicated runner:
+//   process-stock  — ProcessStock, YR & Waste for ONE month (3 SPs, composite):
+//        sp_YarnRealisation_ProcessStock(@FromDate,@CompanyCode)
+//        sp_YarnRealisation_GetAll(@MonthNo=FromDate,@YearNo=ToDate,@CompanyCode)
+//        sp_SaleableWaste(@FromDate,@ToDate,@CompanyCode,@consumption=YR CottonConsumption)
+//   month-wise     — Yarn Realisation month pivot (2 SPs, composite):
+//        sp_YarnRealisation_MonthWise_GetAll(+_Summary)(@MonthNoFrom/@YearNoFrom=FromDate,@MonthNoTo/@YearNoTo=ToDate,@CompanyCode)
+//   waste-abstract — Waste Abstract month pivot (1 SP):
+//        sp_SaleableWaste_MonthWIse(@FromDate,@ToDate,@CompanyCode)
+// The month/year-named params are fed the From/To DATE strings exactly as the VB
+// did (SD(dtpFrom/dtpTo)); the SP derives the month/year internally.
+// ---------------------------------------------------------------------------
+const isoDay = (d) => {
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return new Date().toISOString().slice(0, 10);
+  return dt.toISOString().slice(0, 10);
+};
+
+async function runYarnRealisationProcessStock(req, res) {
+  const subDbName = req.headers.subdbname;
+  if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+  const pool = await getPool(subDbName);
+  const p = readParams(req);
+  const cc = parseInt(p.CompanyCode) || 0;
+  const from = isoDay(p.FromDate);
+  const to = isoDay(p.ToDate);
+
+  const psReq = pool.request();
+  psReq.input('FromDate', sql.DateTime, new Date(from));
+  psReq.input('CompanyCode', sql.Int, cc);
+  const processStock = (await psReq.execute('sp_YarnRealisation_ProcessStock')).recordset || [];
+
+  // @MonthNo / @YearNo receive the From / To date strings (legacy VB binding).
+  const yrReq = pool.request();
+  yrReq.input('MonthNo', from);
+  yrReq.input('YearNo', to);
+  yrReq.input('CompanyCode', sql.Int, cc);
+  const realisation = (await yrReq.execute('sp_YarnRealisation_GetAll')).recordset || [];
+
+  const consumption = realisation.length ? (Number(realisation[0].CottonConsumption) || 0) : 0;
+  const swReq = pool.request();
+  swReq.input('FromDate', sql.DateTime, new Date(from));
+  swReq.input('ToDate', sql.DateTime, new Date(to));
+  swReq.input('CompanyCode', sql.Int, cc);
+  swReq.input('consumption', consumption);
+  const saleableWaste = (await swReq.execute('sp_SaleableWaste')).recordset || [];
+
+  const company = await getCompanyInfo(pool, cc);
+  const docDef = yarnRealisationReport.processStock.buildDocDefinition(
+    { processStock, realisation, saleableWaste }, company.name, from, to, company.logo);
+  addLogoToTitles(docDef, company.name, company.logo);
+  const pdf = await renderPdf(docDef);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'inline; filename="YarnRealisation_ProcessStock.pdf"');
+  res.send(pdf);
+}
+
+async function runYarnRealisationMonthWise(req, res) {
+  const subDbName = req.headers.subdbname;
+  if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+  const pool = await getPool(subDbName);
+  const p = readParams(req);
+  const cc = parseInt(p.CompanyCode) || 0;
+  const from = isoDay(p.FromDate);
+  const to = isoDay(p.ToDate);
+
+  const bind = (r) => {
+    r.input('MonthNoFrom', from);
+    r.input('YearNoFrom', from);
+    r.input('MonthNoTo', to);
+    r.input('YearNoTo', to);
+    r.input('CompanyCode', sql.Int, cc);
+    return r;
+  };
+  const detail = (await bind(pool.request()).execute('sp_YarnRealisation_MonthWise_GetAll')).recordset || [];
+  const summary = (await bind(pool.request()).execute('sp_YarnRealisation_MonthWise_GetAll_Summary')).recordset || [];
+
+  const company = await getCompanyInfo(pool, cc);
+  const docDef = yarnRealisationReport.monthWise.buildDocDefinition(
+    { detail, summary }, company.name, from, to, company.logo);
+  addLogoToTitles(docDef, company.name, company.logo);
+  const pdf = await renderPdf(docDef);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'inline; filename="YarnRealisation_MonthWise.pdf"');
+  res.send(pdf);
+}
+
+// GET /report/yarn/yarn-realisation?groupBy=<type>&FromDate=&ToDate=&CompanyCode=
+export const handleYarnRealisationReportMulti = async (req, res) => {
+  try {
+    const type = String(req.query.groupBy || req.query.type || 'process-stock').trim();
+    if (type === 'process-stock') return await runYarnRealisationProcessStock(req, res);
+    if (type === 'month-wise') return await runYarnRealisationMonthWise(req, res);
+    if (type === 'waste-abstract') {
+      return runReport(req, res, {
+        spName: 'sp_SaleableWaste_MonthWIse',
+        reportModule: yarnRealisationReport.wasteAbstract,
+        fileName: 'YarnRealisation_WasteAbstract',
+      });
+    }
+    return res.status(400).type('text/plain').send('Invalid or missing report type');
+  } catch (err) {
+    console.error(err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Yarn Stock — "Stock Bag No Abstract" (rptStock_BagStockDetails). One screen,
+// five report types + Company + Count / LotNo multi-selects. Four types run
+// sp_YarnStock_Current, one (Abstract) runs sp_Stock_Abstract; BOTH take only
+// @CompanyCode (the VB's date pickers are disabled → dates never sent). Rows are
+// then JS-filtered by the selected CountTypeCode / LotNoCode (the VB's
+// DataResult.Select("... IN (..)")).
+// ---------------------------------------------------------------------------
+function filterYarnStockBagRows(rows, q) {
+  if (!rows || !rows.length) return rows || [];
+  const specs = [
+    ['countTypeCodes', 'CountTypeCode'],
+    ['lotNoCodes', 'LotNoCode'],
+  ];
+  let out = rows;
+  for (const [param, col] of specs) {
+    const raw = String(q[param] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (!raw.length) continue;
+    if (!(col in (out[0] || {}))) continue;
+    const set = new Set(raw.map(String));
+    out = out.filter((r) => set.has(String(r[col])));
+  }
+  return out;
+}
+
+async function runYarnStockBagReport(req, res, { spName, reportModule, fileName }) {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const pool = await getPool(subDbName);
+    const p = readParams(req);
+    const cc = parseInt(p.CompanyCode) || 0;
+
+    // Both SPs take only @CompanyCode (dates are disabled on the VB form).
+    const spReq = pool.request();
+    spReq.input('CompanyCode', sql.Int, cc);
+    const rows = filterYarnStockBagRows((await spReq.execute(spName)).recordset || [], req.query);
+
+    const company = await getCompanyInfo(pool, cc);
+    const docDef = reportModule.buildDocDefinition(rows, company.name, p.FromDate, p.ToDate, company.logo);
+    addLogoToTitles(docDef, company.name, company.logo);
+    const pdf = await renderPdf(docDef);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${fileName}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error(err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+}
+
+const YARN_STOCK_BAG_REPORT = {
+  'bag-no':            { sp: 'sp_YarnStock_Current', mod: 'bagNoWise',       file: 'YarnStock_BagNoWise' },
+  'lot-no':            { sp: 'sp_YarnStock_Current', mod: 'lotNoWise',       file: 'YarnStock_LotNoWise' },
+  'count-lot-summary': { sp: 'sp_YarnStock_Current', mod: 'countLotSummary', file: 'YarnStock_CountLotSummary' },
+  abstract:            { sp: 'sp_Stock_Abstract',    mod: 'abstract',        file: 'YarnStock_BagAbstract' },
+  'production-date':   { sp: 'sp_YarnStock_Current', mod: 'productionDate',  file: 'YarnStock_ProductionDateWise' },
+};
+
+// GET /report/yarn/stock-bag?groupBy=<type>&CompanyCode=&countTypeCodes=&lotNoCodes=
+export const handleYarnStockBagReportMulti = (req, res) => {
+  const type = String(req.query.groupBy || req.query.type || 'bag-no').trim();
+  const def = YARN_STOCK_BAG_REPORT[type];
+  if (!def) return res.status(400).type('text/plain').send('Invalid or missing report type');
+  return runYarnStockBagReport(req, res, { spName: def.sp, reportModule: yarnStockBagReport[def.mod], fileName: def.file });
+};
+
+// GET /report/yarn/stock-bag-options — Count / LotNo dropdowns.
+export const handleYarnStockBagReportOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).json({ error: 'Missing subDBName' });
+    const pool = await getPool(subDbName);
+    const q = (text) => pool.request().query(text).then((r) => r.recordset || []);
+    const [counts, lotNos] = await Promise.all([
+      q('SELECT CountTypeCode, CountType FROM vw_CountType ORDER BY CountType'),
+      q('SELECT LotNoCode, LotNo FROM tbl_LotNo ORDER BY LotNo'),
+    ]);
+    res.json({
+      data: {
+        counts: counts.map((r) => ({ value: r.CountTypeCode, label: r.CountType })),
+        lotNos: lotNos.map((r) => ({ value: r.LotNoCode, label: r.LotNo })),
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Yarn Gate Pass Report (rptYarnGatePass). One report type + Company + a Vehicle
+// multi-select. sp_YarnGatePass_GetAll takes CompanyCode + FromDate + ToDate;
+// rows are then JS-filtered by the selected VehicleCode (the VB
+// DataResult.Select("VehicleCode IN (..)")).
+// ---------------------------------------------------------------------------
+function filterYarnGatePassRows(rows, q) {
+  if (!rows || !rows.length) return rows || [];
+  const raw = String(q.vehicleCodes ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!raw.length) return rows;
+  if (!('VehicleCode' in (rows[0] || {}))) return rows;
+  const set = new Set(raw.map(String));
+  return rows.filter((r) => set.has(String(r.VehicleCode)));
+}
+
+// GET /report/yarn/gate-pass?FromDate=&ToDate=&CompanyCode=&vehicleCodes=
+export const handleYarnGatePassReport = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const pool = await getPool(subDbName);
+    const p = readParams(req);
+
+    const spReq = pool.request();
+    spReq.input('CompanyCode', sql.Int, parseInt(p.CompanyCode) || 0);
+    spReq.input('FromDate', sql.DateTime, p.FromDate ? new Date(p.FromDate) : null);
+    spReq.input('ToDate', sql.DateTime, p.ToDate ? new Date(p.ToDate) : null);
+    const rows = filterYarnGatePassRows((await spReq.execute('sp_YarnGatePass_GetAll')).recordset || [], req.query);
+
+    const company = await getCompanyInfo(pool, p.CompanyCode);
+    const docDef = yarnGatePassReport.dateWise.buildDocDefinition(rows, company.name, p.FromDate, p.ToDate, company.logo);
+    addLogoToTitles(docDef, company.name, company.logo);
+    const pdf = await renderPdf(docDef);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="YarnGatePass_DateWise.pdf"');
+    res.send(pdf);
+  } catch (err) {
+    console.error(err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};
+
+// GET /report/yarn/gate-pass-options — Vehicle dropdown.
+export const handleYarnGatePassReportOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).json({ error: 'Missing subDBName' });
+    const pool = await getPool(subDbName);
+    const vehicles = await pool
+      .request()
+      .query('SELECT VehicleCode, VehicleName FROM tbl_Vehicle WHERE Status = 1 ORDER BY VehicleName')
+      .then((r) => r.recordset || []);
+    res.json({ data: { vehicles: vehicles.map((r) => ({ value: r.VehicleCode, label: r.VehicleName })) } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Sales DayBook Report (rptSalesDayBookDetails). A single report + Company +
+// Customer (multi) + Sales Type filters. Runs sp_SalesDayBook (invoice daybook)
+// + sp_YarnStockAndSalesOrder (count-wise stock summary). Customer & Sales Type
+// are post-SP row filters (the VB does DataResult.Select("CustomerCode IN (..)")
+// and "SalesType IN ('..')"). @FromDate/@ToDate bound only when present.
+// ---------------------------------------------------------------------------
+function sdbCsvSet(req, key) {
+  return new Set(String(req.query[key] ?? '').split(',').map((s) => s.trim()).filter(Boolean));
+}
+function filterSalesDayBookRows(rows, req) {
+  const customers = sdbCsvSet(req, 'customerCodes');
+  const salesTypes = sdbCsvSet(req, 'salesTypes');
+  if (!customers.size && !salesTypes.size) return rows;
+  return rows.filter((r) => {
+    if (customers.size && r.CustomerCode !== undefined && r.CustomerCode !== null && !customers.has(String(r.CustomerCode))) return false;
+    if (salesTypes.size && !salesTypes.has(String(r.SalesType))) return false;
+    return true;
+  });
+}
+
+// GET /report/yarn/sales-day-book-details?FromDate=&ToDate=&CompanyCode=&customerCodes=&salesTypes=
+export const handleSalesDayBookDetailsReport = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+    const pool = await getPool(subDbName);
+    const p = readParams(req);
+    const cc = parseInt(p.CompanyCode) || 0;
+    const from = p.FromDate ? new Date(p.FromDate) : null;
+    const to = p.ToDate ? new Date(p.ToDate) : (from || null);
+
+    // Invoice daybook.
+    const dayReq = pool.request();
+    if (from) { dayReq.input('FromDate', sql.DateTime, from); dayReq.input('ToDate', sql.DateTime, to); }
+    dayReq.input('CompanyCode', sql.Int, cc);
+    const rawDay = (await dayReq.execute('sp_SalesDayBook')).recordset || [];
+    const daybook = filterSalesDayBookRows(rawDay, req);
+
+    // Count-wise stock & sales-order summary (secondary — fault-isolated).
+    let stock = [];
+    try {
+      const stkReq = pool.request();
+      stkReq.input('CompanyCode', sql.Int, cc);
+      if (from) { stkReq.input('FromDate', sql.DateTime, from); stkReq.input('ToDate', sql.DateTime, to); }
+      stock = (await stkReq.execute('sp_YarnStockAndSalesOrder')).recordset || [];
+    } catch (e) { console.error('SalesDayBook stock:', e.message); }
+
+    const company = await getCompanyInfo(pool, cc);
+    const docDef = salesDayBookDetailsReport.report.buildDocDefinition({ daybook, stock }, company.name, p.FromDate, p.ToDate, company.logo);
+    addLogoToTitles(docDef, company.name, company.logo);
+    const pdf = await renderPdf(docDef);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="SalesDayBook.pdf"');
+    res.send(pdf);
+  } catch (err) {
+    console.error(err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};
+
+// GET /report/yarn/sales-day-book-details-options — Customer + Sales Type dropdowns.
+export const handleSalesDayBookDetailsReportOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).json({ error: 'Missing subDBName' });
+    const pool = await getPool(subDbName);
+    const customers = await pool
+      .request()
+      .execute('sp_Customer_GetAll')
+      .then((r) => r.recordset || [])
+      .catch((e) => { console.error('SalesDayBook customers:', e.message); return []; });
+    let salesTypes = [];
+    try {
+      salesTypes = await pool
+        .request()
+        .query('SELECT SalesType FROM vw_SalesDayBook GROUP BY SalesType ORDER BY SalesType')
+        .then((r) => r.recordset || []);
+    } catch (e) { console.error('SalesDayBook salesTypes:', e.message); }
+    res.json({
+      data: {
+        customers: customers.map((r) => ({ value: r.CustomerCode, label: r.CustomerName })),
+        salesTypes: salesTypes.map((r) => ({ value: r.SalesType, label: r.SalesType }))
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Yarn Internal Transfer Report (rptYarnInternalTransfer). Two radio report
+// types + Company + Count Type + Bag No filters. Both filters are applied as
+// post-SP row filters (the VB does DataResult.Select("CountTypeCode IN (..)")
+// and "BagCode IN (..)"). @FromDate/@ToDate are bound only when present (the VB
+// guards with IsDate). Report 1 = sp_YarnIntenalTransfer_GetAll; Report 2 =
+// sp_YarnTransfer_Report.
+// ---------------------------------------------------------------------------
+function ynitCsvSet(req, key) {
+  return new Set(String(req.query[key] ?? '').split(',').map((s) => s.trim()).filter(Boolean));
+}
+function filterYarnITRows(rows, req) {
+  const counts = ynitCsvSet(req, 'countTypeCode');
+  const bags = ynitCsvSet(req, 'bagCode');
+  if (!counts.size && !bags.size) return rows;
+  return rows.filter((r) => {
+    if (counts.size && !counts.has(String(r.CountTypeCode))) return false;
+    // Only apply the bag filter when the recordset carries BagCode (the VB's
+    // DataResult.Select would only work if the column exists).
+    if (bags.size && r.BagCode !== undefined && r.BagCode !== null && !bags.has(String(r.BagCode))) return false;
+    return true;
+  });
+}
+
+async function runYarnInternalTransfer(req, res, { spName, reportModule, fileName }) {
+  const subDbName = req.headers.subdbname;
+  if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+  const pool = await getPool(subDbName);
+  const p = readParams(req);
+  const cc = parseInt(p.CompanyCode) || 0;
+
+  const spReq = pool.request();
+  // Mirror the VB: only pass the date params when a valid date was chosen.
+  if (p.FromDate) {
+    spReq.input('FromDate', sql.DateTime, new Date(p.FromDate));
+    spReq.input('ToDate', sql.DateTime, p.ToDate ? new Date(p.ToDate) : new Date(p.FromDate));
+  }
+  const raw = (await spReq.execute(spName)).recordset || [];
+  const rows = filterYarnITRows(raw, req);
+
+  const company = await getCompanyInfo(pool, cc);
+  const docDef = reportModule.buildDocDefinition(rows, company.name, p.FromDate, p.ToDate, company.logo);
+  addLogoToTitles(docDef, company.name, company.logo);
+  const pdf = await renderPdf(docDef);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${fileName}.pdf"`);
+  res.send(pdf);
+}
+
+// GET /report/yarn/internal-transfer?groupBy=report1|report2&FromDate=&ToDate=&CompanyCode=&countTypeCode=&bagCode=
+export const handleYarnInternalTransferReportMulti = async (req, res) => {
+  try {
+    const type = String(req.query.groupBy || req.query.type || 'report1').trim();
+    if (type === 'report2') {
+      return await runYarnInternalTransfer(req, res, {
+        spName: 'sp_YarnTransfer_Report',
+        reportModule: yarnInternalTransferReport.dateWise,
+        fileName: 'YarnInternalTransfer_DateWise'
+      });
+    }
+    return await runYarnInternalTransfer(req, res, {
+      spName: 'sp_YarnIntenalTransfer_GetAll',
+      reportModule: yarnInternalTransferReport.detail,
+      fileName: 'YarnInternalTransfer'
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};
+
+// GET /report/yarn/internal-transfer-options — Count Type + Bag No dropdowns.
+export const handleYarnInternalTransferReportOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).json({ error: 'Missing subDBName' });
+    const pool = await getPool(subDbName);
+    const counts = await pool
+      .request()
+      .query('SELECT CountTypeCode, ShortName FROM tbl_CountType ORDER BY ShortName')
+      .then((r) => r.recordset || []);
+    let bags = [];
+    try {
+      bags = await pool
+        .request()
+        .query('SELECT DISTINCT BagCode, BagNo FROM vw_YarnIntenalTransfer ORDER BY BagNo')
+        .then((r) => r.recordset || []);
+    } catch (e) { console.error('YarnIT bag options:', e.message); }
+    res.json({
+      data: {
+        counts: counts.map((r) => ({ value: r.CountTypeCode, label: r.ShortName })),
+        bags: bags.map((r) => ({ value: r.BagCode, label: String(r.BagNo) }))
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Yarn RG-1 Report (rptYarnRG1). Two report types + Company + a single Count
+// filter. `@CountTypeCode` is bound to the SP only when a single count is chosen
+// (mirrors the VB `If Val(cmbYarnCount.ColData("CountTypeCode")) > 0`). Count
+// Wise runs 3 SPs and passes a COMPOSITE { yarn, cotton, waste } to the builder.
+// ---------------------------------------------------------------------------
+// First selected count code (the ReportViewer sends comma-joined codes; the VB
+// combo is single-select, so only the first is bound as @CountTypeCode).
+function firstCountCode(req) {
+  const raw = String(req.query.countTypeCode ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const n = parseInt(raw[0]);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+async function runYarnRG1DateWise(req, res) {
+  const subDbName = req.headers.subdbname;
+  if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+  const pool = await getPool(subDbName);
+  const p = readParams(req);
+  const cc = parseInt(p.CompanyCode) || 0;
+  const countCode = firstCountCode(req);
+
+  const spReq = pool.request();
+  spReq.input('FromDate', sql.DateTime, p.FromDate ? new Date(p.FromDate) : null);
+  spReq.input('ToDate', sql.DateTime, p.ToDate ? new Date(p.ToDate) : null);
+  spReq.input('CompanyCode', sql.Int, cc);
+  if (countCode > 0) spReq.input('CountTypeCode', sql.Int, countCode);
+  const rows = (await spReq.execute('sp_Yarn_RG1')).recordset || [];
+
+  const company = await getCompanyInfo(pool, cc);
+  const docDef = yarnRG1Report.dateWise.buildDocDefinition(rows, company.name, p.FromDate, p.ToDate, company.logo);
+  addLogoToTitles(docDef, company.name, company.logo);
+  const pdf = await renderPdf(docDef);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'inline; filename="YarnRG1_DateWise.pdf"');
+  res.send(pdf);
+}
+
+async function runYarnRG1CountWise(req, res) {
+  const subDbName = req.headers.subdbname;
+  if (!subDbName) return res.status(400).type('text/plain').send('Missing subDBName header');
+  const pool = await getPool(subDbName);
+  const p = readParams(req);
+  const cc = parseInt(p.CompanyCode) || 0;
+  const from = p.FromDate ? new Date(p.FromDate) : null;
+  const to = p.ToDate ? new Date(p.ToDate) : null;
+  const countCode = firstCountCode(req);
+
+  const yReq = pool.request();
+  yReq.input('FromDate', sql.DateTime, from);
+  yReq.input('ToDate', sql.DateTime, to);
+  yReq.input('CompanyCode', sql.Int, cc);
+  if (countCode > 0) yReq.input('CountTypeCode', sql.Int, countCode);
+  const yarn = (await yReq.execute('sp_Yarn_RG1_Count_WithoutDate')).recordset || [];
+
+  const bind = (r) => { r.input('FromDate', sql.DateTime, from); r.input('ToDate', sql.DateTime, to); r.input('CompanyCode', sql.Int, cc); return r; };
+  // sp_Cotton_Stock / sp_WasteStockStatus are secondary context — never fail the
+  // whole report if one errors (fault-isolated).
+  let cotton = [], waste = [];
+  try { cotton = (await bind(pool.request()).execute('sp_Cotton_Stock')).recordset || []; } catch (e) { console.error('RG1 cotton:', e.message); }
+  try { waste = (await bind(pool.request()).execute('sp_WasteStockStatus')).recordset || []; } catch (e) { console.error('RG1 waste:', e.message); }
+
+  const company = await getCompanyInfo(pool, cc);
+  const docDef = yarnRG1Report.countWise.buildDocDefinition({ yarn, cotton, waste }, company.name, p.FromDate, p.ToDate, company.logo);
+  addLogoToTitles(docDef, company.name, company.logo);
+  const pdf = await renderPdf(docDef);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'inline; filename="YarnRG1_CountWise.pdf"');
+  res.send(pdf);
+}
+
+// GET /report/yarn/rg1?groupBy=date|count&FromDate=&ToDate=&CompanyCode=&countTypeCode=
+export const handleYarnRG1ReportMulti = async (req, res) => {
+  try {
+    const type = String(req.query.groupBy || req.query.type || 'date').trim();
+    if (type === 'count') return await runYarnRG1CountWise(req, res);
+    return await runYarnRG1DateWise(req, res);
+  } catch (err) {
+    console.error(err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+};
+
+// GET /report/yarn/rg1-options — Count dropdown.
+export const handleYarnRG1ReportOptions = async (req, res) => {
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) return res.status(400).json({ error: 'Missing subDBName' });
+    const pool = await getPool(subDbName);
+    const counts = await pool
+      .request()
+      .query('SELECT CountTypeCode, CountType FROM vw_CountType WHERE Status = 1 ORDER BY CountType')
+      .then((r) => r.recordset || []);
+    res.json({ data: { counts: counts.map((r) => ({ value: r.CountTypeCode, label: r.CountType })) } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
 
 export const handleYarnAgentCommissionDateWiseReport = (req, res) => runReport(req, res, {
   spName: 'sp_YarnAgentCommission_GetAll',
