@@ -283,6 +283,103 @@ export function countSummaryColumn(rows, { groupBy, groupLabel, groupHeader, sec
 }
 
 // ---------------------------------------------------------------------------
+// Employee Master filter chain (rptEmployeeMaster.vb parity).
+// The legacy WinForms screen pulls every employee from sp_Employee_GetAll_Photo
+// once, then narrows the DataTable in memory with a stack of .Select() calls —
+// one per combo. We reproduce that here so the same filter set works for ALL
+// master reports without changing the SP. Every filter is OPTIONAL: a query
+// param that's absent/empty leaves the rows untouched, so the reports that send
+// none of these params behave exactly as before.
+// ---------------------------------------------------------------------------
+
+// Split a comma-separated code list ("1,4,9") into a Set of trimmed strings, or
+// null when nothing was passed (→ "all", skip the filter). Values compare as
+// strings so 3 / "3" / "03" line up regardless of the source shape.
+function codeSet(v) {
+  if (v == null) return null;
+  const arr = String(v)
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s !== '');
+  return arr.length ? new Set(arr) : null;
+}
+
+export function applyEmployeeFilters(rows, query = {}) {
+  if (!Array.isArray(rows) || rows.length === 0) return rows || [];
+  const keep = (val, set) => set == null || set.has(String(val));
+
+  const branch = codeSet(query.BranchCode);
+  const empGroup = codeSet(query.EmpGroupCode);
+  const category = codeSet(query.EmpCategoryCode);
+  const department = codeSet(query.DepartmentCode);
+  const designation = codeSet(query.DesignationCode);
+  const employee = codeSet(query.EmployeeCode);
+  const grade = codeSet(query.GradeCode);
+  const batch = codeSet(query.EmployeeBatchCode);
+  const hostel = codeSet(query.HostelTypeCode);
+  const agent = codeSet(query.AgentCode);
+  const bank = codeSet(query.BankCode);
+  const gender = codeSet(query.SexCode);
+
+  // Mess Allow. — YES = "1", NO = "0". Selecting both (or neither) = all.
+  const mess = codeSet(query.messAllow);
+  const messYes = mess && mess.has('1') && !mess.has('0');
+  const messNo = mess && mess.has('0') && !mess.has('1');
+
+  // PF / Non PF — the WinForms rule: PF = (PF > 0 AND PFNo is set).
+  const pf = String(query.pfNonPf || '').toUpperCase();
+
+  // Leave Status — matches the `Status` column (ACTIVE / ON LEAVE / RELEAVE).
+  const leave = codeSet(String(query.leaveStatus || '').toUpperCase());
+
+  // DOJ range — only applied when BOTH ends are present (checkbox-gated in VB).
+  const dojFrom = query.dojFrom ? new Date(query.dojFrom) : null;
+  const dojTo = query.dojTo ? new Date(query.dojTo) : null;
+  const dojValid = dojFrom && dojTo && !isNaN(dojFrom) && !isNaN(dojTo);
+
+  // Age band — only when both > 0 (the VB guard: Age >= above AND <= below).
+  const ageAbove = query.ageAbove != null && query.ageAbove !== '' ? parseInt(query.ageAbove) : null;
+  const ageBelow = query.ageBelow != null && query.ageBelow !== '' ? parseInt(query.ageBelow) : null;
+  const ageValid = ageAbove > 0 && ageBelow > 0;
+
+  const hasPf = (r) => Number(r.PF) > 0 && r.PFNo != null && String(r.PFNo).trim() !== '';
+
+  return rows.filter((r) => {
+    if (!keep(r.BranchCode, branch)) return false;
+    if (!keep(r.EmpGroupCode, empGroup)) return false;
+    if (!keep(r.EmpCategoryCode, category)) return false;
+    if (!keep(r.DepartmentCode, department)) return false;
+    if (!keep(r.DesignationCode, designation)) return false;
+    if (!keep(r.EmployeeCode, employee)) return false;
+    if (!keep(r.GradeCode, grade)) return false;
+    if (!keep(r.EmployeeBatchCode, batch)) return false;
+    if (!keep(r.HostelTypeCode, hostel)) return false;
+    if (!keep(r.AgentCode, agent)) return false;
+    if (!keep(r.BankCode, bank)) return false;
+    if (!keep(r.SexCode, gender)) return false;
+
+    const messOn = r.MessAllowance === true || r.MessAllowance === 1;
+    if (messYes && !messOn) return false;
+    if (messNo && messOn) return false;
+
+    if (pf === 'PF' && !hasPf(r)) return false;
+    if (pf === 'NONPF' && hasPf(r)) return false;
+
+    if (leave && !leave.has(String(r.Status ?? '').toUpperCase())) return false;
+
+    if (dojValid) {
+      const doj = r.DateOfJoining ? new Date(r.DateOfJoining) : null;
+      if (!doj || isNaN(doj) || doj < dojFrom || doj > dojTo) return false;
+    }
+    if (ageValid) {
+      const age = parseInt(r.Age);
+      if (isNaN(age) || age < ageAbove || age > ageBelow) return false;
+    }
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Orchestrator — every payroll master report calls this.
 // Runs sp_Employee_GetAll_Photo with the same param shape the rest of the app
 // uses (branch/company via applyBranchCode + EmployeeCode; 0 = all employees),
@@ -309,7 +406,9 @@ export async function runEmployeeReport(req, res, { fileName, buildDocDefinition
     }
 
     const spResult = await spReq.execute(spName);
-    const rows = spResult.recordset || [];
+    // Employee Master screen filters (Branch/Dept/Grade/Agent/Mess/PF/DOJ/Age…).
+    // No-op for the other reports, which send none of these params.
+    const rows = applyEmployeeFilters(spResult.recordset || [], req.query);
     const company = await getCompanyInfo(pool, companyCode);
 
     const docDef = buildDocDefinition({
@@ -331,6 +430,77 @@ export async function runEmployeeReport(req, res, { fileName, buildDocDefinition
           `database:     ${dbCfg.database}`,
           `company:      ${company.name || '(none)'}`,
           `EmployeeCode: ${parseInt(req.query.EmployeeCode) || 0}`,
+          `rows:         ${rows.length}`,
+          `Total:        ${Date.now() - t0} ms (${pdfBuffer.length} pdf bytes)`,
+          sample ? `\nfirst rows:\n${sample}` : ''
+        ].join('\n')
+      );
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${fileName}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error(err);
+    res.status(500).type('text/plain').send('ERROR: ' + err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Generic date-ranged employee report orchestrator. Runs `spName` with
+// branch/company (applyBranchCode) + FromDate/ToDate, applies the Employee
+// Master filter chain (Department / Designation / Employee / Batch / … — a no-op
+// when their params are absent), then hands the rows to buildDocDefinition.
+// Used by reports whose SP takes @FromDate/@ToDate/@CompanyCode with the same
+// filterable row shape (e.g. sp_DesignationChange_GetAll). FromDate/ToDate
+// default to today and are passed through for the header.
+// ---------------------------------------------------------------------------
+export async function runDateRangeEmployeeReport(req, res, { fileName, buildDocDefinition, spName }) {
+  const t0 = Date.now();
+  try {
+    const subDbName = req.headers.subdbname;
+    if (!subDbName) {
+      return res.status(400).type('text/plain').send('Missing subDBName header');
+    }
+
+    const debug = req.query.debug === '1';
+    const companyCode = req.query.CompanyCode || req.query.companyCode || req.headers.companycode || '0';
+    const today = new Date().toISOString().slice(0, 10);
+    const fromDate = req.query.FromDate || req.query.fromDate || today;
+    const toDate = req.query.ToDate || req.query.toDate || today;
+    const pool = await getPool(subDbName);
+
+    const spReq = pool.request();
+    applyBranchCode(spReq, req.headers);                       // BranchCode or CompanyCode
+    spReq.input('FromDate', sql.DateTime, new Date(fromDate));
+    spReq.input('ToDate', sql.DateTime, new Date(toDate));
+
+    const spResult = await spReq.execute(spName);
+    const rows = applyEmployeeFilters(spResult.recordset || [], req.query);
+    const company = await getCompanyInfo(pool, companyCode);
+
+    const docDef = buildDocDefinition({
+      rows,
+      companyName: company.name,
+      companyLogo: company.logo,
+      fromDate,
+      toDate,
+      query: req.query
+    });
+    const pdfBuffer = await renderPdf(docDef);
+
+    if (debug) {
+      const dbCfg = pool.config || {};
+      const sample = rows.slice(0, 3).map((r, i) => `  [${i}] ` + JSON.stringify(r).slice(0, 240)).join('\n');
+      return res.type('text/plain').send(
+        [
+          `SP:           ${spName}`,
+          `subDBName:    ${subDbName}`,
+          `server:       ${dbCfg.server}${dbCfg.port ? ':' + dbCfg.port : ''}`,
+          `database:     ${dbCfg.database}`,
+          `company:      ${company.name || '(none)'}`,
+          `FromDate:     ${fromDate}`,
+          `ToDate:       ${toDate}`,
           `rows:         ${rows.length}`,
           `Total:        ${Date.now() - t0} ms (${pdfBuffer.length} pdf bytes)`,
           sample ? `\nfirst rows:\n${sample}` : ''

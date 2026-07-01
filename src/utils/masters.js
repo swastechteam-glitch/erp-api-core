@@ -232,6 +232,34 @@ export const getCottonArrivalTypes = async (pool) => {
   }));
 };
 
+// Raw material TYPE master (used by the Cotton Stock report's RawMaterial Type
+// filter — value is the code, matching the SP's RawMaterialTypeCode column).
+export const getRawMaterialTypes = async (pool) => {
+  const r = await pool
+    .request()
+    .query(
+      "Select RawMaterialTypeCode, RawMaterialTypeName from tbl_RawmaterialType Order by RawMaterialTypeName",
+    );
+  return r.recordset.map((t) => ({
+    value: t.RawMaterialTypeCode,
+    label: t.RawMaterialTypeName,
+  }));
+};
+
+// Cotton arrival (Mill Lot No) list — value is ArrivalCode, label is MillLotNo.
+// Mirrors the WinForms cmbMillLotNO source (tbl_CottonArrival order by ArrivalCode).
+export const getCottonMillLots = async (pool) => {
+  const r = await pool
+    .request()
+    .query(
+      "Select ArrivalCode, MillLotNo from tbl_CottonArrival Order by ArrivalCode",
+    );
+  return r.recordset.map((a) => ({
+    value: a.ArrivalCode,
+    label: a.MillLotNo,
+  }));
+};
+
 // Fixed combo lists (WinForms combo indexes, not DB-backed). Shared by the
 // cotton screens so the index->label mapping lives in one place.
 export const PAYMENT_TYPES = [

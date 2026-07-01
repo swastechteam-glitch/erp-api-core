@@ -11,6 +11,12 @@ import { employeeAdolescentReport } from "../controllers/report/payroll/employee
 import { departmentWiseShiftListAbstractReport } from "../controllers/report/payroll/departmentWiseShiftListAbstract.js";
 import { agentWiseDepartmentAbstractReport } from "../controllers/report/payroll/agentWiseDepartmentAbstract.js";
 import { agentWiseHostelAbstractReport } from "../controllers/report/payroll/agentWiseHostelAbstract.js";
+import { employeeBatchWiseReport } from "../controllers/report/payroll/employeeBatchWiseReport.js";
+import { employeeHostelTypeWiseReport } from "../controllers/report/payroll/employeeHostelTypeWiseReport.js";
+import { employeeRoomListReport } from "../controllers/report/payroll/employeeRoomListReport.js";
+import { employeePFandESIReport } from "../controllers/report/payroll/employeePFandESIReport.js";
+import { employeeMasterOptions } from "../controllers/report/payroll/masterOptions.js";
+import { designationChangeReport } from "../controllers/report/payroll/designationChange.js";
 
 // Payroll -> New Joining Report
 import { newJoiningAgentWiseReport } from "../controllers/report/payroll/newJoiningAgentWise.js";
@@ -49,6 +55,15 @@ router.get('/master/adolescent', authenticate, employeeAdolescentReport);
 router.get('/master/department-wise-shift-abstract', authenticate, departmentWiseShiftListAbstractReport);
 router.get('/master/agent-wise-department-abstract', authenticate, agentWiseDepartmentAbstractReport);
 router.get('/master/agent-wise-hostel-abstract', authenticate, agentWiseHostelAbstractReport);
+router.get('/master/batch-wise', authenticate, employeeBatchWiseReport);
+router.get('/master/hostel-type-wise', authenticate, employeeHostelTypeWiseReport);
+router.get('/master/room-list', authenticate, employeeRoomListReport);
+router.get('/master/pf-esi-register', authenticate, employeePFandESIReport);
+// Filter-rail lookup lists for the Employee Master (rptEmployeeMaster) screen.
+router.get('/master/options', authenticate, employeeMasterOptions);
+
+// Payroll -> Department / Designation Change Report (rptDesignationChange).
+router.get('/designation-change', authenticate, designationChangeReport);
 
 // Payroll -> New Joining Report
 router.get('/new-joining/agent-wise', authenticate, newJoiningAgentWiseReport);
