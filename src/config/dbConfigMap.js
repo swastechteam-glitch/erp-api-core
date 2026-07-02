@@ -250,29 +250,19 @@ export const clientDBConfig = {
     port: 16000,
     database: "SwasERP_Thenpandian",
   },
-  // TPN2 — Thenpandian. getPool() tries these endpoints IN ORDER, first that
-  // connects wins. The API runs on the CLOUD, so it needs a PUBLIC address for
-  // the mill's SQL server. Set up DDNS on the mill router + port-forward the
-  // public port to TPSMSERVER:1433, then fill in endpoint 1 below.
-  TPN2: [
-    {
-      // 1) ⚠️ DDNS endpoint (PRIMARY, cloud-reachable) — FILL THESE IN:
-      user: "sa",
-      password: "@dmin1305",
-      server: "REPLACE_WITH_DDNS_HOST", // e.g. tpnmill.ddns.net  (NO \SQL2008 suffix)
-      port: 16000, // the PUBLIC port you forwarded -> TPSMSERVER:1433
-      database: "SwasERP_ThenpandianU2",
-    },
-    {
-      // 2) LAN fallback — only reachable if the API ever runs on the mill LAN.
-      user: "sa",
-      password: "@dmin1305",
-      server: "192.168.0.21\\SQL2008",
-      database: "SwasERP_ThenpandianU2",
-    },
-    // Old static IP (dead — removed from active failover to avoid 60s hangs):
-    // { user: "sa", password: "@dmin1305", server: "61.2.74.74", port: 16000, database: "SwasERP_ThenpandianU2" },
-  ],
+  // TPN2 — Thenpandian. The API runs on the CLOUD and reaches the client's local
+  // SQL server over a Tailscale VPN. 100.80.37.8 = the client SQL machine's
+  // Tailscale IP (device "tpsmserver"); 16000 = the SQL2008 instance TCP port.
+  // Requires: the cloud server is joined to the SAME tailnet, and Windows
+  // Firewall on the client allows inbound TCP 16000.
+  TPN2: {
+    user: "sa",
+    password: "@dmin1305",
+    server: "100.80.37.8",
+    port: 16000,
+    database: "SwasERP_ThenpandianU2",
+    // Was: "192.168.0.21\\SQL2008" (LAN-only — only worked from inside the mill).
+  },
 
   SKT: {
     user: "sa",
