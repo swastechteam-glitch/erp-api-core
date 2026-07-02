@@ -148,8 +148,8 @@ export const clientDBConfig = {
     // users) can reach the app from anywhere.
     user: "sa",
     password: "@dmin1305",
-    server: "61.2.74.74",
-    port: 16000,
+    server: "SKYRP\\SQL2008",
+    port: 1433,
     database: "SwasERP_ThenpandianU2",
 
     // user: "sa",
@@ -191,9 +191,9 @@ export const clientDBConfig = {
   DEV: {
     user: "sa",
     password: "@dmin1305",
-    server: "103.208.228.199",
+    server: "117.200.77.84",
     port: 16000,
-    database: "SwasERP_SKT_Test",
+    database: "SwasERP_KAS_Check",
   },
   KPF: {
     user: "sa",
@@ -250,27 +250,28 @@ export const clientDBConfig = {
     port: 16000,
     database: "SwasERP_Thenpandian",
   },
-  // TPN2 — Thenpandian. Multiple endpoints: getPool() tries them IN ORDER and
-  // uses the first that connects. So the app works whether the API runs on the
-  // client's LAN (endpoint 1) or off-site (endpoint 2). Reorder/adjust as the
-  // client's network changes.
+  // TPN2 — Thenpandian. getPool() tries these endpoints IN ORDER, first that
+  // connects wins. The API runs on the CLOUD, so it needs a PUBLIC address for
+  // the mill's SQL server. Set up DDNS on the mill router + port-forward the
+  // public port to TPSMSERVER:1433, then fill in endpoint 1 below.
   TPN2: [
     {
-      // 1) Client local LAN server — used when the API runs on the same network.
+      // 1) ⚠️ DDNS endpoint (PRIMARY, cloud-reachable) — FILL THESE IN:
+      user: "sa",
+      password: "@dmin1305",
+      server: "REPLACE_WITH_DDNS_HOST", // e.g. tpnmill.ddns.net  (NO \SQL2008 suffix)
+      port: 16000, // the PUBLIC port you forwarded -> TPSMSERVER:1433
+      database: "SwasERP_ThenpandianU2",
+    },
+    {
+      // 2) LAN fallback — only reachable if the API ever runs on the mill LAN.
       user: "sa",
       password: "@dmin1305",
       server: "TPSMSERVER\\SQL2008",
-      // port: 1433,
       database: "SwasERP_ThenpandianU2",
     },
-    {
-      // 2) Public IP fallback — used when the LAN server isn't reachable.
-      user: "sa",
-      password: "@dmin1305",
-      server: "61.2.74.74",
-      port: 16000,
-      database: "SwasERP_ThenpandianU2",
-    },
+    // Old static IP (dead — removed from active failover to avoid 60s hangs):
+    // { user: "sa", password: "@dmin1305", server: "61.2.74.74", port: 16000, database: "SwasERP_ThenpandianU2" },
   ],
 
   SKT: {
