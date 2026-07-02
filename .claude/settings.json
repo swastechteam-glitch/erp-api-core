@@ -112,7 +112,9 @@
       "Bash(node -e \"const fs=require\\('fs'\\);const cp=require\\('child_process'\\);const out=cp.execSync\\('grep -rni productionReport src --include=*.js'\\).toString\\(\\);fs.writeFileSync\\('mount_result.txt',out\\);\")",
       "Bash(node -e \"console.error\\(require\\('fs'\\).readFileSync\\('mount_result.txt','utf8'\\)\\)\")",
       "Bash(node --input-type=module -e \"import\\('./src/routes/productionReportRoutes.js'\\).then\\(\\(\\)=>console.error\\('ROUTES_IMPORT_OK'\\)\\).catch\\(e=>console.error\\('IMPORT_ERR: '+e.message\\)\\)\")",
-      "Bash(node --input-type=module -e \"import\\('./src/routes/productionReportRoutes.js'\\).then\\(m=>console.log\\('ROUTES_IMPORT_OK default='+typeof m.default\\)\\).catch\\(e=>console.log\\('IMPORT_ERR: '+e.message\\)\\)\")"
+      "Bash(node --input-type=module -e \"import\\('./src/routes/productionReportRoutes.js'\\).then\\(m=>console.log\\('ROUTES_IMPORT_OK default='+typeof m.default\\)\\).catch\\(e=>console.log\\('IMPORT_ERR: '+e.message\\)\\)\")",
+      "Bash(node --check src/config/dbConfigMap.js)",
+      "Bash(node --check src/config/dynamicDB.js)"
     ]
   }
 }

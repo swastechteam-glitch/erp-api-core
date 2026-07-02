@@ -250,19 +250,28 @@ export const clientDBConfig = {
     port: 16000,
     database: "SwasERP_Thenpandian",
   },
-  // TPN2 — Thenpandian. Points at the client's local SQL server (the static
-  // public IP 61.2.74.74 is no longer reachable). This works only when the API
-  // runs on the same LAN as the SQL server.
-  TPN2: {
-    user: "sa",
-    password: "@dmin1305",
-    server: "TPSMSERVER\\SQL2008",
-    port: 1433,
-    database: "SwasERP_ThenpandianU2",
-    // Old external endpoint (static IP dead — kept for reference):
-    // server: "61.2.74.74",
-    // port: 16000,
-  },
+  // TPN2 — Thenpandian. Multiple endpoints: getPool() tries them IN ORDER and
+  // uses the first that connects. So the app works whether the API runs on the
+  // client's LAN (endpoint 1) or off-site (endpoint 2). Reorder/adjust as the
+  // client's network changes.
+  TPN2: [
+    {
+      // 1) Client local LAN server — used when the API runs on the same network.
+      user: "sa",
+      password: "@dmin1305",
+      server: "TPSMSERVER\\SQL2008",
+      port: 1433,
+      database: "SwasERP_ThenpandianU2",
+    },
+    {
+      // 2) Public IP fallback — used when the LAN server isn't reachable.
+      user: "sa",
+      password: "@dmin1305",
+      server: "61.2.74.74",
+      port: 16000,
+      database: "SwasERP_ThenpandianU2",
+    },
+  ],
 
   SKT: {
     user: "sa",

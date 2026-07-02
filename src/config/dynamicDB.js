@@ -18,44 +18,63 @@ export async function getAiChatPool() {
 export async function getPool(subDBName) {
   console.log(subDBName, "subDBName");
 
-  try {
-    const config = clientDBConfig[subDBName];
-    console.log(config, "4545");
+  const rawConfig = clientDBConfig[subDBName];
+  if (!rawConfig) {
+    throw new Error(`❌ No DB config found for ${subDBName}`);
+  }
 
-    if (!config) {
-      throw new Error(`❌ No DB config found for ${subDBName}`);
-    }
+  // If cached and still connected → reuse
+  if (connectionCache.has(subDBName)) {
+    const pool = connectionCache.get(subDBName);
+    if (pool.connected) return pool;
+    // Stale/broken pool — drop it and reconnect below.
+    connectionCache.delete(subDBName);
+  }
 
-    // If cached and still connected → reuse
-    if (connectionCache.has(subDBName)) {
-      const pool = connectionCache.get(subDBName);
-      if (pool.connected) return pool;
-    }
+  // A client can list several endpoints (e.g. local LAN server first, then a
+  // public-IP fallback). Normalize to an array and try each IN ORDER, using the
+  // first that connects.
+  const endpoints = Array.isArray(rawConfig) ? rawConfig : [rawConfig];
+
+  let lastError;
+  for (let i = 0; i < endpoints.length; i++) {
+    const config = endpoints[i];
+    const isLast = i === endpoints.length - 1;
 
     const dbConfig = {
       ...config,
       options: { encrypt: false, trustServerCertificate: true },
-      connectionTimeout: 60000,
+      // Fail fast on earlier endpoints so we can move to the next one quickly;
+      // give the last endpoint the full timeout since there's no fallback left.
+      connectionTimeout: isLast ? 60000 : 8000,
       requestTimeout: 60000,
       pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
     };
 
-    const pool = await new sql.ConnectionPool(dbConfig).connect();
-    console.log(`✅ Connected to DB for ${subDBName}`);
-
-    connectionCache.set(subDBName, pool);
-    return pool;
-
-  } catch (err) {
-    console.error(`❌ Database connection failed for ${subDBName}`);
-    console.error("Error details:", err.message);
-
-    // Clean cache if partial connection stored
-    if (connectionCache.has(subDBName)) {
-      connectionCache.delete(subDBName);
+    try {
+      const pool = await new sql.ConnectionPool(dbConfig).connect();
+      console.log(
+        `✅ Connected to DB for ${subDBName} via ${config.server}:${config.port}` +
+          (endpoints.length > 1 ? ` (endpoint ${i + 1}/${endpoints.length})` : ""),
+      );
+      connectionCache.set(subDBName, pool);
+      return pool;
+    } catch (err) {
+      lastError = err;
+      console.error(
+        `❌ DB connect failed for ${subDBName} via ${config.server}:${config.port} — ${err.message}`,
+      );
+      // Try the next endpoint (if any).
     }
-
-    // Send custom readable error upward
-    throw new Error(`Your server connection is lost. Please check and try again.`);
   }
+
+  // Every endpoint failed.
+  connectionCache.delete(subDBName);
+  console.error(
+    `❌ Database connection failed for ${subDBName} (all ${endpoints.length} endpoint(s))`,
+  );
+  console.error("Last error details:", lastError?.message);
+
+  // Send custom readable error upward
+  throw new Error(`Your server connection is lost. Please check and try again.`);
 }
