@@ -482,6 +482,7 @@ async function runYarnInvoiceReport(req, res, { reportModule, fileName }) {
     spReq.input('CompanyCode', sql.Int, parseInt(p.CompanyCode) || 0);
     spReq.input('FromDate', sql.DateTime, p.FromDate ? new Date(p.FromDate) : null);
     spReq.input('ToDate', sql.DateTime, p.ToDate ? new Date(p.ToDate) : null);
+    spReq.input('OrderBy', sql.NVarChar(8), 'BillDate');
     const spResult = await spReq.execute('sp_InvoiceDetails_GetAll');
 
     const rows = filterYarnInvoiceRows(spResult.recordset || [], req.query);
