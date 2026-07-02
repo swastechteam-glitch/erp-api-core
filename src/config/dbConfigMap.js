@@ -267,7 +267,7 @@ export const clientDBConfig = {
       // 2) LAN fallback — only reachable if the API ever runs on the mill LAN.
       user: "sa",
       password: "@dmin1305",
-      server: "TPSMSERVER\\SQL2008",
+      server: "192.168.0.21\\SQL2008",
       database: "SwasERP_ThenpandianU2",
     },
     // Old static IP (dead — removed from active failover to avoid 60s hangs):
