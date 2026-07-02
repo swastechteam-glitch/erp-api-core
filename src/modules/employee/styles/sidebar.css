@@ -1,0 +1,812 @@
+/* =========================================================================
+   Midnight Pro — eTex ERP sidebar  (FINAL, synthesized)
+   Premium dark-navy sidebar with an indigo + violet + cyan accent system.
+
+   Base direction: "Midnight Pro" (highest-scored).
+   Grafted best ideas:
+     - Nebula Glass  : @supports-guarded frosted flyout (solid fallback FIRST),
+                       isolation:isolate, masked 1px gradient hairline right-edge
+                       border, rotating conic sweep behind the active leaf.
+     - Aurora Rail   : faint, slow living aurora glow overlay on the shell;
+                       GPU-cheap wayfinding pulse on the active-parent chip.
+     - Lumen Light   : springy cubic-bezier(.34,1.56,.64,1) micro-interactions,
+                       4px focus-ring on bullets, and a reduced-motion block that
+                       ALSO zeroes transition-delay so no cascade is left mid-way.
+     - 4-tier text ramp (text / text-2 / muted / faint) for deep-nest readability.
+
+   Dark colours are SCOPED to the sidebar (.emp-sidebar / .emp-flyout).
+   Global --emp-* tokens (base.css) are NEVER redefined here — the light
+   content area depends on them.
+   ========================================================================= */
+
+/* -------------------------------------------------------------------------
+   Sidebar-scoped palette (local vars — do NOT collide with global --emp-*)
+   ------------------------------------------------------------------------- */
+.emp-sidebar,
+.emp-flyout {
+  --sb-bg: #0e1526;
+  --sb-bg-2: #101a30;
+  --sb-surface: #142038;
+  --sb-surface-2: #182747;
+  --sb-line: rgba(148, 163, 208, .12);
+  --sb-line-strong: rgba(148, 163, 208, .22);
+  /* 4-tier text ramp — the single most important readability decision for
+     a dense, deeply-nested ERP menu. */
+  --sb-text: #e7ecf7;     /* tier 1: top rows, active, logo         */
+  --sb-text-2: #b8c1da;   /* tier 2: nested branch rows, dashboard  */
+  --sb-muted: #7f8bab;    /* tier 3: leaves, icons, carets          */
+  --sb-faint: #5c688a;    /* tier 4: bullets, placeholder           */
+  --sb-indigo: #5b5fef;
+  --sb-indigo-2: #6d72ff;
+  --sb-violet: #8b5cf6;
+  --sb-cyan: #22d3ee;
+  --sb-glow: rgba(91, 95, 239, .45);
+  --sb-glow-soft: rgba(91, 95, 239, .28);
+  --sb-scroll: rgba(123, 139, 188, .35);
+  /* easing tokens */
+  --sb-ease: cubic-bezier(.4, 0, .2, 1);
+  --sb-spring: cubic-bezier(.34, 1.56, .64, 1);
+}
+
+/* =========================================================================
+   SHELL — dimensions are load-bearing, do not change
+   ========================================================================= */
+.emp-sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  background:
+    radial-gradient(120% 80% at 0% 0%, rgba(91, 95, 239, .10), transparent 55%),
+    radial-gradient(100% 60% at 100% 100%, rgba(34, 211, 238, .06), transparent 60%),
+    linear-gradient(180deg, var(--sb-bg-2) 0%, var(--sb-bg) 100%);
+  border-right: 1px solid var(--sb-line);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+  z-index: 30;
+  color: var(--sb-text);
+  will-change: width;
+  isolation: isolate;                 /* graft (V3): stable stacking context */
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, .02);
+  transition: width .28s var(--sb-ease);
+}
+
+/* subtle top sheen line */
+.emp-sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .08), transparent);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* graft (V1): faint, slow living aurora glow behind everything.
+   Very low opacity, pointer-events:none, disabled under reduced-motion. */
+.emp-sidebar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 50% at 15% 0%, rgba(139, 92, 246, .16), transparent 60%),
+    radial-gradient(120% 45% at 95% 100%, rgba(91, 95, 239, .14), transparent 62%);
+  opacity: .8;
+  animation: sb-aurora 22s ease-in-out infinite alternate;
+}
+/* keep real content above the aurora layer */
+.emp-full-layer,
+.emp-rail-layer {
+  position: relative;
+  z-index: 1;
+}
+
+/* =========================================================================
+   3-LAYER CROSS-FADE COLLAPSE
+   ========================================================================= */
+.emp-full-layer {
+  width: 300px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  opacity: 1;
+  transition: opacity .2s ease, transform .28s var(--sb-ease);
+}
+.emp-sidebar.is-rail .emp-full-layer {
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+}
+
+.emp-rail-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 76px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 18px 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease .02s;
+}
+.emp-sidebar.is-rail .emp-rail-layer {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.emp-sidebar.is-rail {
+  width: 76px;
+  z-index: 100;
+}
+
+/* =========================================================================
+   RAIL (collapsed) column
+   ========================================================================= */
+.emp-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+}
+.emp-rail-logo {
+  margin: 4px 0 22px;
+  animation: sb-logo-pop .5s var(--sb-spring) both;
+}
+.emp-rail-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  width: 100%;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb-scroll) transparent;
+}
+.emp-rail-list::-webkit-scrollbar { width: 6px; }
+.emp-rail-list::-webkit-scrollbar-thumb {
+  background: var(--sb-scroll);
+  border-radius: 8px;
+}
+.emp-rail-list::-webkit-scrollbar-track { background: transparent; }
+
+.emp-rail-btn {
+  position: relative;
+  width: 44px;
+  height: 38px;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: var(--sb-muted);
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .18s ease, color .18s ease, transform .18s var(--sb-spring), box-shadow .18s ease;
+}
+/* slim active indicator bar (rail) */
+.emp-rail-btn::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  height: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--sb-cyan), var(--sb-indigo));
+  transform: translateY(-50%);
+  transition: height .22s var(--sb-ease);
+}
+.emp-rail-btn:hover {
+  background: var(--sb-surface);
+  color: var(--sb-text);
+  transform: translateY(-1px);
+}
+.emp-rail-btn:hover > * { transform: scale(1.08); }
+.emp-rail-btn.is-active {
+  background: linear-gradient(135deg, var(--sb-indigo), var(--sb-violet));
+  color: #fff;
+  box-shadow: 0 6px 18px var(--sb-glow), inset 0 0 0 1px rgba(255, 255, 255, .12);
+}
+.emp-rail-btn.is-active::before { height: 20px; }
+
+/* =========================================================================
+   FLYOUT (hover-reveal panel in rail mode) — dimensions load-bearing.
+   Solid fallback FIRST, then @supports-guarded frost (graft: V3).
+   ========================================================================= */
+.emp-flyout {
+  position: fixed;
+  top: 0;
+  left: 76px;
+  width: 280px;
+  height: 100vh;
+  /* solid opaque fallback declared FIRST */
+  background:
+    radial-gradient(120% 40% at 0% 0%, rgba(91, 95, 239, .12), transparent 55%),
+    linear-gradient(180deg, var(--sb-bg-2), var(--sb-bg));
+  border-right: 1px solid var(--sb-line-strong);
+  box-shadow: 0 24px 70px rgba(4, 8, 20, .55), 1px 0 0 rgba(255, 255, 255, .03);
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  z-index: 200;
+  overflow-y: auto;
+  color: var(--sb-text);
+  isolation: isolate;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-12px);
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb-scroll) transparent;
+  transition: opacity .22s ease, transform .22s var(--sb-ease), visibility .22s ease;
+}
+/* graft (V3): masked 1px gradient hairline on the right edge — tasteful
+   premium detail with zero readability cost. */
+.emp-flyout::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  padding: 1px;
+  background: linear-gradient(180deg,
+      rgba(139, 92, 246, .55),
+      rgba(91, 95, 239, .28) 40%,
+      rgba(255, 255, 255, .04) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  clip-path: inset(0 0 0 calc(100% - 1px));
+}
+/* progressive enhancement — frost ONLY the fixed flyout, never the
+   always-scrolling main panel (avoids the perf hit). */
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .emp-flyout {
+    background:
+      radial-gradient(120% 40% at 0% 0%, rgba(91, 95, 239, .14), transparent 55%),
+      linear-gradient(180deg, rgba(16, 26, 48, .82), rgba(14, 21, 38, .84));
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+            backdrop-filter: blur(24px) saturate(150%);
+  }
+}
+.emp-flyout::-webkit-scrollbar { width: 8px; }
+.emp-flyout::-webkit-scrollbar-thumb {
+  background: var(--sb-scroll);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.emp-flyout::-webkit-scrollbar-thumb:hover { background: rgba(123, 139, 188, .55); }
+.emp-flyout::-webkit-scrollbar-track { background: transparent; }
+.emp-sidebar.is-rail:hover .emp-flyout {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+}
+
+/* =========================================================================
+   HAMBURGER (topbar toggle) — lives in the light topbar, keep light-friendly
+   ========================================================================= */
+.emp-hamburger {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--emp-border);
+  background: #fff;
+  color: var(--emp-text);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  font-size: 18px;
+  flex-shrink: 0;
+  transition: background .16s ease, color .16s ease, transform .16s var(--sb-spring), box-shadow .16s ease, border-color .16s ease;
+}
+.emp-hamburger:hover {
+  border-color: var(--emp-accent);
+  color: var(--emp-accent);
+  box-shadow: 0 4px 14px rgba(91, 95, 239, .18);
+  transform: translateY(-1px);
+}
+.emp-hamburger:active { transform: translateY(0) scale(.96); }
+
+/* =========================================================================
+   LOGO
+   ========================================================================= */
+.emp-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 22px;
+  font-weight: 800;
+  font-size: 18px;
+  color: var(--sb-text);
+  letter-spacing: .2px;
+  animation: sb-fade-in .5s ease both;
+}
+.emp-logo > span:last-child {
+  background: linear-gradient(90deg, #fff 0%, var(--sb-text-2) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.emp-logo-mark {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--sb-indigo), var(--sb-violet));
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+  box-shadow: 0 6px 18px var(--sb-glow), inset 0 0 0 1px rgba(255, 255, 255, .14);
+  overflow: hidden;
+  animation: sb-logo-pop .55s var(--sb-spring) both;
+}
+/* rotating sheen sweep across the logo mark */
+.emp-logo-mark::after {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(255, 255, 255, .28) 40deg, transparent 90deg);
+  animation: sb-logo-sheen 6s linear infinite;
+}
+
+/* =========================================================================
+   NAV (Dashboard button block)
+   ========================================================================= */
+.emp-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.emp-nav-item {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  color: var(--sb-text-2);
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  transition: background .16s ease, color .16s ease, transform .16s var(--sb-spring), box-shadow .16s ease;
+}
+.emp-nav-item::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  height: 0;
+  width: 3px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--sb-cyan), var(--sb-indigo));
+  transform: translateY(-50%);
+  transition: height .22s var(--sb-ease);
+}
+.emp-nav-item:hover {
+  background: var(--sb-surface);
+  color: var(--sb-text);
+  transform: translateX(2px);
+}
+.emp-nav-item:hover::before { height: 16px; }
+.emp-nav-item:hover .emp-nav-icon { transform: scale(1.12); color: var(--sb-cyan); }
+.emp-nav-item.is-active {
+  background: linear-gradient(135deg, var(--sb-indigo), var(--sb-violet));
+  color: #fff;
+  box-shadow: 0 8px 22px var(--sb-glow), inset 0 0 0 1px rgba(255, 255, 255, .1);
+  transform: none;
+}
+.emp-nav-item.is-active::before { height: 22px; background: #fff; }
+.emp-nav-icon {
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  transition: transform .2s var(--sb-spring), color .16s ease;
+}
+
+/* =========================================================================
+   MENU PANEL + SEARCH
+   ========================================================================= */
+.emp-menu-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-bottom: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb-scroll) transparent;
+}
+.emp-menu-panel::-webkit-scrollbar { width: 8px; }
+.emp-menu-panel::-webkit-scrollbar-thumb {
+  background: var(--sb-scroll);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.emp-menu-panel::-webkit-scrollbar-thumb:hover { background: rgba(123, 139, 188, .55); }
+.emp-menu-panel::-webkit-scrollbar-track { background: transparent; }
+
+.emp-menu-search {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--sb-surface);
+  border: 1px solid var(--sb-line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin: 0 2px 10px;
+  box-shadow: 0 2px 10px rgba(4, 8, 20, .35);
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+.emp-menu-search:focus-within {
+  border-color: rgba(91, 95, 239, .6);
+  background: var(--sb-surface-2);
+  box-shadow: 0 0 0 3px var(--sb-glow-soft);
+}
+.emp-menu-search input {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  width: 100%;
+  color: var(--sb-text);
+}
+.emp-menu-search input::placeholder { color: var(--sb-faint); }
+.emp-menu-search-ico {
+  color: var(--sb-muted);
+  flex-shrink: 0;
+  transition: color .18s ease;
+}
+.emp-menu-search:focus-within .emp-menu-search-ico { color: var(--sb-cyan); }
+.emp-menu-search-clear {
+  color: var(--sb-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color .16s ease, transform .16s var(--sb-spring);
+}
+.emp-menu-search-clear:hover { color: var(--sb-text); transform: scale(1.12) rotate(90deg); }
+
+/* =========================================================================
+   MENU TREE
+   ========================================================================= */
+.emp-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* mount stagger for top-level branches */
+.emp-menu > .emp-mi-branch {
+  margin-bottom: 1px;
+  animation: sb-row-in .34s ease both;
+}
+.emp-menu > .emp-mi-branch:nth-child(1) { animation-delay: .02s; }
+.emp-menu > .emp-mi-branch:nth-child(2) { animation-delay: .05s; }
+.emp-menu > .emp-mi-branch:nth-child(3) { animation-delay: .08s; }
+.emp-menu > .emp-mi-branch:nth-child(4) { animation-delay: .11s; }
+.emp-menu > .emp-mi-branch:nth-child(5) { animation-delay: .14s; }
+.emp-menu > .emp-mi-branch:nth-child(6) { animation-delay: .17s; }
+.emp-menu > .emp-mi-branch:nth-child(7) { animation-delay: .20s; }
+.emp-menu > .emp-mi-branch:nth-child(8) { animation-delay: .23s; }
+.emp-menu > .emp-mi-branch:nth-child(n+9) { animation-delay: .26s; }
+
+/* generic menu item (rows + leaves share this) */
+.emp-mi {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--sb-text-2);
+  transition: background .16s ease, color .16s ease, transform .18s var(--sb-spring), box-shadow .16s ease;
+}
+.emp-mi:hover {
+  background: var(--sb-surface);
+  color: var(--sb-text);
+}
+.emp-mi:active { transform: scale(.985); }
+.emp-mi-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* -------- Top section rows (depth 0) -------- */
+.emp-mi-row.is-top {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--sb-text);
+  padding: 10px 12px;
+}
+.emp-mi-ico {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  background: rgba(91, 95, 239, .16);
+  color: #aeb2ff;
+  font-size: 16px;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 208, .1);
+  transition: background .2s ease, color .2s ease, transform .2s var(--sb-spring), box-shadow .2s ease;
+}
+.emp-mi-row.is-top:hover .emp-mi-ico {
+  transform: scale(1.08) rotate(-3deg);
+  color: #fff;
+}
+.emp-mi-branch.is-top.is-open > .emp-mi-row .emp-mi-ico,
+.emp-mi-row.is-top.is-active-parent .emp-mi-ico {
+  background: linear-gradient(135deg, var(--sb-indigo), var(--sb-violet));
+  color: #fff;
+  box-shadow: 0 6px 16px var(--sb-glow), inset 0 0 0 1px rgba(255, 255, 255, .16);
+}
+/* graft (V1): GPU-cheap wayfinding pulse on the ACTIVE-PARENT chip
+   ("which section am I in?"). Short transform/opacity glow, not an
+   infinite box-shadow loop. */
+.emp-mi-row.is-top.is-active-parent .emp-mi-ico {
+  animation: sb-chip-pulse 2.6s ease-in-out infinite;
+}
+
+/* -------- Nested branch rows -------- */
+.emp-mi-row {
+  font-weight: 600;
+  color: var(--sb-text-2);
+}
+.emp-mi-row.is-active-parent {
+  color: #c9ccff;
+}
+.emp-mi-row.is-active-parent::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  height: 16px;
+  width: 3px;
+  border-radius: 3px;
+  transform: translateY(-50%);
+  background: linear-gradient(180deg, var(--sb-cyan), var(--sb-indigo));
+}
+
+/* -------- Caret -------- */
+.emp-mi-caret {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 15px;
+  color: var(--sb-muted);
+  transition: transform .26s var(--sb-ease), color .16s ease;
+}
+.emp-mi-row:hover .emp-mi-caret { color: var(--sb-cyan); }
+.emp-mi-branch.is-open > .emp-mi-row .emp-mi-caret {
+  transform: rotate(90deg);
+  color: var(--sb-indigo-2);
+}
+
+/* -------- Leaves (screens) -------- */
+.emp-mi-leaf {
+  position: relative;
+  color: var(--sb-muted);
+  font-size: 13px;
+  overflow: hidden;                    /* clips the active conic sweep */
+}
+.emp-mi-leaf:hover {
+  transform: translateX(3px);
+  color: var(--sb-text);
+}
+.emp-mi-bullet {
+  position: relative;
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin: 0 3px;
+  border-radius: 50%;
+  background: var(--sb-faint);
+  transition: background .16s ease, transform .2s var(--sb-spring), box-shadow .16s ease;
+}
+/* graft (V2): 4px focus-ring bloom on hovered bullet */
+.emp-mi-leaf:hover .emp-mi-bullet {
+  background: var(--sb-cyan);
+  transform: scale(1.35);
+  box-shadow: 0 0 0 4px rgba(34, 211, 238, .14);
+}
+.emp-mi-leaf.is-active {
+  color: #fff;
+  font-weight: 600;
+  background: linear-gradient(135deg, rgba(91, 95, 239, .95), rgba(139, 92, 246, .92));
+  box-shadow: 0 8px 20px var(--sb-glow), inset 0 0 0 1px rgba(255, 255, 255, .12);
+}
+/* graft (V3): rotating conic sweep behind the active-leaf pill for a
+   premium living accent. Rendered on a positive-z, overflow-clipped
+   pseudo (the leaf clips it) — no z-index:-1 stacking fragility.
+   The label/bullet sit above via their own stacking; the sweep is a
+   translucent overlay tinted onto the gradient pill. */
+.emp-mi-leaf.is-active::after {
+  content: "";
+  position: absolute;
+  inset: -70%;
+  z-index: 0;
+  pointer-events: none;
+  background: conic-gradient(from 0deg,
+      transparent 0deg,
+      rgba(255, 255, 255, .16) 55deg,
+      transparent 130deg,
+      rgba(34, 211, 238, .18) 210deg,
+      transparent 320deg);
+  animation: sb-sweep 7s linear infinite;
+}
+/* keep the label + bullet above the sweep */
+.emp-mi-leaf.is-active > * { position: relative; z-index: 1; }
+.emp-mi-leaf.is-active .emp-mi-bullet {
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, .18);
+}
+/* slim active indicator bar on the active leaf (one-shot reveal) */
+.emp-mi-leaf.is-active::before {
+  content: "";
+  position: absolute;
+  left: -11px;
+  top: 50%;
+  height: 18px;
+  width: 3px;
+  border-radius: 3px;
+  z-index: 1;
+  background: linear-gradient(180deg, var(--sb-cyan), #fff);
+  transform: translateY(-50%);
+  animation: sb-bar-grow .28s var(--sb-ease) both;
+}
+
+/* =========================================================================
+   SUBMENU expand (grid-rows 0fr -> 1fr trick — MUST stay)
+   ========================================================================= */
+.emp-mi-sub {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows .28s var(--sb-ease);
+}
+.emp-mi-sub.is-open {
+  grid-template-rows: 1fr;
+}
+.emp-mi-sub-inner {
+  overflow: hidden;
+  min-height: 0;
+  margin: 2px 0 2px 22px;
+  padding-left: 11px;
+  border-left: 1.5px solid var(--sb-line);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity .24s ease, border-color .24s ease;
+}
+.emp-mi-sub.is-open > .emp-mi-sub-inner { opacity: 1; }
+.emp-mi-branch.is-open:has(> .emp-mi-row.is-active-parent) > .emp-mi-sub > .emp-mi-sub-inner {
+  border-left-color: rgba(91, 95, 239, .55);
+  box-shadow: -1px 0 12px -6px rgba(139, 92, 246, .7);
+}
+
+/* =========================================================================
+   KEYFRAMES
+   ========================================================================= */
+@keyframes sb-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes sb-row-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes sb-logo-pop {
+  0%   { opacity: 0; transform: scale(.6) rotate(-8deg); }
+  70%  { transform: scale(1.08) rotate(2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes sb-logo-sheen {
+  to { transform: rotate(360deg); }
+}
+@keyframes sb-bar-grow {
+  from { height: 0; opacity: 0; }
+  to   { height: 18px; opacity: 1; }
+}
+@keyframes sb-aurora {
+  0%   { transform: translate3d(0, 0, 0) scale(1); opacity: .7; }
+  100% { transform: translate3d(0, 2%, 0) scale(1.06); opacity: .95; }
+}
+@keyframes sb-sweep {
+  to { transform: rotate(360deg); }
+}
+@keyframes sb-chip-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 6px 16px var(--sb-glow), inset 0 0 0 1px rgba(255, 255, 255, .16); }
+  50%      { transform: scale(1.05); box-shadow: 0 6px 22px rgba(139, 92, 246, .7), inset 0 0 0 1px rgba(255, 255, 255, .22); }
+}
+
+/* =========================================================================
+   REDUCED MOTION — disable non-essential animation.
+   graft (V2): ALSO zero transition-delay so a staggered cascade can never
+   leave a reduced-motion user staring at a mid-cascade blank state.
+   ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  .emp-sidebar,
+  .emp-full-layer,
+  .emp-rail-layer,
+  .emp-flyout,
+  .emp-mi-sub,
+  .emp-mi,
+  .emp-mi-leaf,
+  .emp-mi-caret,
+  .emp-mi-ico,
+  .emp-mi-bullet,
+  .emp-mi-row.is-active-parent::after,
+  .emp-nav-item,
+  .emp-nav-item::before,
+  .emp-nav-icon,
+  .emp-rail-btn,
+  .emp-rail-btn::before,
+  .emp-hamburger,
+  .emp-menu-search,
+  .emp-menu-search-ico,
+  .emp-menu-search-clear {
+    transition-duration: .001ms !important;
+    transition-delay: 0ms !important;
+  }
+  .emp-sidebar::after,
+  .emp-menu > .emp-mi-branch,
+  .emp-logo,
+  .emp-logo-mark,
+  .emp-logo-mark::after,
+  .emp-rail-logo,
+  .emp-mi-row.is-top.is-active-parent .emp-mi-ico,
+  .emp-mi-leaf.is-active::before,
+  .emp-mi-leaf.is-active::after {
+    animation: none !important;
+  }
+  /* ensure staggered rows land visible (not mid-fade) */
+  .emp-menu > .emp-mi-branch,
+  .emp-logo { opacity: 1 !important; transform: none !important; }
+  /* keep active-leaf indicator visible without the grow animation */
+  .emp-mi-leaf.is-active::before { height: 18px; opacity: 1; }
+  /* neutralize hover transforms */
+  .emp-mi:hover,
+  .emp-mi-leaf:hover,
+  .emp-nav-item:hover,
+  .emp-rail-btn:hover,
+  .emp-hamburger:hover,
+  .emp-mi-row.is-top:hover .emp-mi-ico { transform: none !important; }
+  /* keep the collapse cross-fade + submenu expand functional but instant-ish */
+  .emp-sidebar { transition: width .28s var(--sb-ease) !important; }
+  .emp-mi-sub { transition: grid-template-rows .2s ease !important; }
+  .emp-full-layer,
+  .emp-rail-layer,
+  .emp-flyout { transition: opacity .2s ease, visibility .2s ease !important; }
+}
